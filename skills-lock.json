@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "flask-api-development": {
+      "source": "aj-geddes/useful-ai-prompts",
+      "sourceType": "github",
+      "computedHash": "cae3a73820685f8c41e224723f96740913535e830cd05ee7a08445e8face39d6"
+    },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "computedHash": "063a0e6448123cd359ad0044cc46b0e490cc7964d45ef4bb9fd842bd2ffbca67"
+    }
+  }
+}
