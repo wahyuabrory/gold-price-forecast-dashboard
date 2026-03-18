@@ -87,9 +87,13 @@ class GoldPredictor:
                 next_pred = self.model.predict(input_reshaped, verbose=0)
                 predictions_scaled.append(next_pred[0, 0])
                 
+                # Debug logging
+                logger.debug(f"Input shape: {input_reshaped.shape}")
+                logger.debug(f"Input range: {input_reshaped.min()} - {input_reshaped.max()}")
+                logger.debug(f"Prediction (scaled): {next_pred[0, 0]}")
+                
                 # Update input: shift left and append prediction
-                current_input = np.roll(current_input, -1, axis=0)
-                current_input[-1] = next_pred[0, 0]
+                current_input = np.append(current_input[1:], [[next_pred[0, 0]]], axis=0)
             
             # Inverse scale predictions
             predictions_scaled = np.array(predictions_scaled).reshape(-1, 1)

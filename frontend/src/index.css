@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
 @theme {
   --color-primary: #D4AF37;
   --color-primary-dark: #B8860B;
@@ -12,8 +13,13 @@
   --color-surface-dark: #1F2937;
   --color-charcoal: #36454F;
 
-  --font-sans: 'Inter', sans-serif;
-  --font-display: 'Playfair Display', serif;
+  --font-sans: 'Poppins', sans-serif;
+  --font-serif: 'Instrument Serif', serif;
+}
+
+/* Global Typography Adjustments */
+h1, .font-serif {
+  font-style: italic;
 }
 
 /* Custom scrollbar */

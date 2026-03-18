@@ -75,11 +75,14 @@ export default function Dashboard() {
       {/* Header */}
       <header className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-display font-bold text-slate-900 dark:text-white">
+          <h1 className="text-3xl font-serif font-bold text-slate-900 dark:text-white">
             Ringkasan Dashboard
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">
             Pantau pergerakan harga emas secara real-time.
+          </p>
+          <p className="text-sm italic text-slate-400 dark:text-slate-500 mt-2">
+            Data terakhir kali diupdate 30 September 2025
           </p>
         </div>
       </header>
