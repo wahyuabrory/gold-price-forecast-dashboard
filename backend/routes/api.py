@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 SAMPLE_DATA_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), '..', 'gold-backend', 'dataset_final.csv'
+    os.path.dirname(os.path.dirname(__file__)), '..', 'backend/models', 'dataset_final.csv'
 )
 
 
@@ -23,7 +23,7 @@ def _parse_csv(df):
     """Parse and normalize CSV DataFrame to standard format."""
     # Normalize column names
     df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
-    
+
     # Detect date column
     date_col = None
     for col in ['date', 'tanggal', 'dates']:
@@ -32,7 +32,7 @@ def _parse_csv(df):
             break
     if date_col is None:
         date_col = df.columns[0]
-    
+
     # Detect price column
     price_col = None
     for col in ['gold_price', 'close', 'price', 'harga', 'close_price']:
@@ -41,18 +41,18 @@ def _parse_csv(df):
             break
     if price_col is None:
         price_col = df.columns[1]
-    
+
     # Parse dates
     df[date_col] = pd.to_datetime(df[date_col], format='mixed', dayfirst=False)
     df = df.sort_values(date_col).reset_index(drop=True)
-    
+
     # Build standard dataframe
     result = pd.DataFrame({
         'date': df[date_col].dt.strftime('%Y-%m-%d'),
         'gold_price': pd.to_numeric(df[price_col], errors='coerce'),
     })
     result = result.dropna()
-    
+
     return result
 
 
@@ -61,37 +61,37 @@ def upload_csv():
     """Upload and parse a CSV dataset."""
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': 'File tidak ditemukan'}), 400
-    
+
     file = request.files['file']
     if file.filename == '':
         return jsonify({'success': False, 'error': 'Nama file kosong'}), 400
-    
+
     if not file.filename.lower().endswith('.csv'):
         return jsonify({'success': False, 'error': 'Format file harus CSV'}), 400
-    
+
     try:
         df = pd.read_csv(file)
         parsed = _parse_csv(df)
-        
+
         if len(parsed) < 60:
             return jsonify({
                 'success': False,
                 'error': 'Dataset minimal harus 60 baris data'
             }), 400
-        
+
         # Store in session
         session['dataset'] = parsed.to_json(orient='records')
         session['filename'] = file.filename
         session['uploaded_at'] = datetime.now().isoformat()
         session['records'] = len(parsed)
-        
+
         return jsonify({
             'success': True,
             'records': len(parsed),
             'date_range': [parsed['date'].iloc[0], parsed['date'].iloc[-1]],
             'filename': file.filename,
         })
-        
+
     except Exception as e:
         logger.error(f"Upload error: {e}")
         return jsonify({'success': False, 'error': f'Gagal memproses file: {str(e)}'}), 400
@@ -103,19 +103,19 @@ def sample_data():
     try:
         df = pd.read_csv(SAMPLE_DATA_PATH)
         parsed = _parse_csv(df)
-        
+
         session['dataset'] = parsed.to_json(orient='records')
         session['filename'] = 'dataset_final.csv (Sample)'
         session['uploaded_at'] = datetime.now().isoformat()
         session['records'] = len(parsed)
-        
+
         return jsonify({
             'success': True,
             'records': len(parsed),
             'date_range': [parsed['date'].iloc[0], parsed['date'].iloc[-1]],
             'filename': 'dataset_final.csv (Sample)',
         })
-        
+
     except Exception as e:
         logger.error(f"Sample data error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -127,22 +127,22 @@ def predict():
     dataset_json = session.get('dataset')
     if not dataset_json:
         return jsonify({'success': False, 'error': 'Upload dataset terlebih dahulu'}), 400
-    
+
     data = request.get_json() or {}
     days = min(max(int(data.get('days', 30)), 1), 90)
-    
+
     try:
         df = pd.read_json(io.StringIO(dataset_json), orient='records')
         # Convert dates back to strings if they became timestamps
         if pd.api.types.is_datetime64_any_dtype(df['date']):
             df['date'] = df['date'].dt.strftime('%Y-%m-%d')
-        
+
         # Ensure model is loaded
         predictor.load_model()
-        
+
         # Generate predictions
         result = predictor.predict(df, days=days)
-        
+
         # Store predictions in session
         if result.get('success'):
             session['predictions'] = result.get('predictions', [])
@@ -151,9 +151,9 @@ def predict():
                 for i in range(days)
             ]
             session['metrics'] = result.get('metrics', {})
-        
+
         return jsonify(result)
-        
+
     except Exception as e:
         logger.error(f"Prediction error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -173,17 +173,17 @@ def export_predictions():
     """Export predictions as CSV file."""
     predictions = session.get('predictions')
     pred_dates = session.get('prediction_dates')
-    
+
     if not predictions or not pred_dates:
         return jsonify({'success': False, 'error': 'Tidak ada prediksi untuk diekspor'}), 400
-    
+
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(['date', 'predicted_price', 'model'])
-    
+
     for date, pred in zip(pred_dates, predictions):
         writer.writerow([date, round(pred), 'GRU'])
-    
+
     output.seek(0)
     return send_file(
         io.BytesIO(output.getvalue().encode('utf-8')),
@@ -197,7 +197,7 @@ def export_predictions():
 def dashboard():
     """Return dashboard summary data."""
     dataset_json = session.get('dataset')
-    
+
     if not dataset_json:
         # Try loading sample data automatically
         try:
@@ -220,54 +220,54 @@ def dashboard():
                 'tomorrow_prediction': 0,
                 'chart_data': [],
             })
-    
+
     try:
         df = pd.read_json(io.StringIO(dataset_json), orient='records')
         # Convert dates back to strings if they became timestamps
         if pd.api.types.is_datetime64_any_dtype(df['date']):
             df['date'] = df['date'].dt.strftime('%Y-%m-%d')
         prices = df['gold_price'].values
-        
+
         current_price = float(prices[-1])
         prev_price = float(prices[-2]) if len(prices) > 1 else current_price
         price_change_pct = round((current_price - prev_price) / prev_price * 100, 2)
-        
+
         lowest_idx = np.argmin(prices)
         highest_idx = np.argmax(prices)
-        
+
         # Last 30 days volatility
         last_30 = prices[-30:] if len(prices) >= 30 else prices
         std_30 = np.std(last_30)
         mean_30 = np.mean(last_30)
         volatility_pct = round(std_30 / mean_30 * 100, 1) if mean_30 > 0 else 0
-        
+
         if volatility_pct < 2:
             volatility_label = f'Rendah ({volatility_pct}%)'
         elif volatility_pct < 5:
             volatility_label = f'Sedang ({volatility_pct}%)'
         else:
             volatility_label = f'Tinggi ({volatility_pct}%)'
-        
+
         # Sentiment based on recent trend
         if len(prices) >= 7:
             week_change = (prices[-1] - prices[-7]) / prices[-7] * 100
             sentiment = 'Bullish' if week_change > 0.5 else ('Bearish' if week_change < -0.5 else 'Neutral')
         else:
             sentiment = 'Neutral'
-        
+
         # Simple tomorrow prediction (last price + average daily change)
         if len(prices) >= 7:
             avg_change = np.mean(np.diff(prices[-7:]))
             tomorrow = current_price + avg_change
         else:
             tomorrow = current_price
-        
+
         # Chart data
         chart_data = [
             {'date': row['date'], 'price': float(row['gold_price'])}
             for _, row in df.iterrows()
         ]
-        
+
         return jsonify({
             'success': True,
             'current_price': current_price,
@@ -281,7 +281,7 @@ def dashboard():
             'tomorrow_prediction': round(float(tomorrow)),
             'chart_data': chart_data,
         })
-        
+
     except Exception as e:
         logger.error(f"Dashboard error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -292,7 +292,7 @@ def historical():
     """Return historical analysis data."""
     dataset_json = session.get('dataset')
     period = request.args.get('period', '30d')
-    
+
     if not dataset_json:
         # Auto-load sample data
         try:
@@ -302,13 +302,13 @@ def historical():
             dataset_json = session['dataset']
         except Exception:
             return jsonify({'success': True, 'chart_data': [], 'volatility_data': []})
-    
+
     try:
         df = pd.read_json(io.StringIO(dataset_json), orient='records')
         # Convert dates back to strings if they became timestamps
         if pd.api.types.is_datetime64_any_dtype(df['date']):
             df['date'] = df['date'].dt.strftime('%Y-%m-%d')
-        
+
         # Filter by period
         if period == '30d':
             df_filtered = df.tail(30)
@@ -318,31 +318,31 @@ def historical():
             df_filtered = df.tail(365)
         else:
             df_filtered = df
-        
+
         prices = df_filtered['gold_price'].values
         current_price = float(prices[-1])
         first_price = float(prices[0])
-        
+
         price_change_pct = round((current_price - first_price) / first_price * 100, 2)
-        
+
         # Daily changes
         daily_changes = np.diff(prices)
         avg_change = round(float(np.mean(daily_changes)), 0) if len(daily_changes) > 0 else 0
         avg_price = round(float(np.mean(prices)), 0)
-        
+
         # Volatility (std of daily returns)
         daily_returns = daily_changes / prices[:-1] * 100 if len(prices) > 1 else []
         std_dev = round(float(np.std(daily_returns)), 2) if len(daily_returns) > 0 else 0
-        
+
         biggest_gain = round(float(np.max(daily_changes)), 0) if len(daily_changes) > 0 else 0
         biggest_loss = round(float(np.min(daily_changes)), 0) if len(daily_changes) > 0 else 0
-        
+
         # Chart data
         chart_data = [
             {'date': row['date'], 'price': float(row['gold_price'])}
             for _, row in df_filtered.iterrows()
         ]
-        
+
         # Volatility bar chart data (daily variance in chunks)
         chunk_size = max(1, len(daily_returns) // 10)
         volatility_data = []
@@ -355,7 +355,7 @@ def historical():
                 'variance': round(variance * 100, 1),
                 'highlight': bool(max_var > np.mean(np.abs(daily_returns))) if len(daily_returns) > 0 else False,
             })
-        
+
         return jsonify({
             'success': True,
             'current_price': current_price,
@@ -368,7 +368,7 @@ def historical():
             'chart_data': chart_data,
             'volatility_data': volatility_data,
         })
-        
+
     except Exception as e:
         logger.error(f"Historical data error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
