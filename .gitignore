@@ -1,0 +1,38 @@
+# Frontend
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+frontend/.vscode/*
+!frontend/.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Backend (Python/Flask)
+backend/**/__pycache__/
+backend/**/*.py[cod]
+backend/flask_session/
+backend/.venv/
+backend/venv/
+backend/env/
+backend/.env
+backend/.env.*
+backend/.pytest_cache/
