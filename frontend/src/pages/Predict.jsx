@@ -75,13 +75,19 @@ export default function Predict() {
     try {
       setIsPredicting(true);
       const result = await generatePrediction(predDays);
-      if (result.success) {
-        setChartData(result.chart_data || []);
-        setMetrics(result.metrics || null);
+      if (!result.success) {
+        throw new Error(result.error || 'Gagal menghasilkan prediksi.');
       }
+
+      setChartData(result.chart_data || []);
+      setMetrics(result.metrics || null);
     } catch (err) {
       console.error('Prediction error:', err);
-      alert('Gagal menghasilkan prediksi. Coba lagi.');
+      const serverMessage = err?.response?.data?.error;
+      const message = serverMessage
+        || err?.message
+        || 'Gagal menghasilkan prediksi. Coba lagi.';
+      alert(message);
     } finally {
       setIsPredicting(false);
     }

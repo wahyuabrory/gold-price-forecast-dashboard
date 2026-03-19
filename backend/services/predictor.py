@@ -10,14 +10,27 @@ logger = logging.getLogger(__name__)
 MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'backend/models')
 
 class GoldPredictor:
-    """GRU-based gold price prediction service."""
+    """
+    GRU-based gold price prediction service.
+
+    The model was trained on engineered features including:
+    - Lags: gold_price_lag_1/7/14, usd_idr_lag_1/7
+    - Moving Averages: gold_price_ma_7/14/30, usd_idr_ma_7
+    - Standard Deviations: gold_price_std_7/14, usd_idr_std_7
+    - Percentage Changes: gold_price_pct_1/7, usd_idr_pct_1/7
+    - External features: usd_idr, inflation, interest_rate
+
+    Uses a 60-day lookback window and recursive multi-step prediction.
+    """
 
     def __init__(self):
         self.model = None
-        self.scaler = None
+        self.scaler_X = None
+        self.scaler_y = None
         self.meta = None
         self.sequence_length = 60
         self._loaded = False
+        self.feature_names = None
 
     def load_model(self):
         """Load GRU model, scaler, and metadata from disk."""
@@ -36,14 +49,20 @@ class GoldPredictor:
             tf.get_logger().setLevel('ERROR')
 
             self.model = tf.keras.models.load_model(model_path)
-            self.scaler = joblib.load(scaler_path)
+
+            # Load scalers (stored as dict with scaler_X and scaler_y)
+            scalers_dict = joblib.load(scaler_path)
+            self.scaler_X = scalers_dict.get('scaler_X')
+            self.scaler_y = scalers_dict.get('scaler_y')
+
             self.meta = joblib.load(meta_path)
 
-            # Get sequence length from metadata if available
-            if isinstance(self.meta, dict) and 'sequence_length' in self.meta:
-                self.sequence_length = self.meta['sequence_length']
+            # Get sequence length and feature names from metadata
+            if isinstance(self.meta, dict):
+                self.sequence_length = self.meta.get('lookback', 60)
+                self.feature_names = self.meta.get('features', [])
 
-            logger.info(f"Model loaded successfully. Sequence length: {self.sequence_length}")
+            logger.info(f"Model loaded successfully. Sequence length: {self.sequence_length}, Features: {len(self.feature_names)}")
             self._loaded = True
             return True
 
@@ -51,12 +70,78 @@ class GoldPredictor:
             logger.error(f"Failed to load model: {e}")
             return False
 
-    def predict(self, data, days=30):
+    def _engineer_features(self, data):
         """
-        Generate multi-step predictions using recursive approach.
+        Engineer features from raw data to match training setup.
 
         Args:
-            data: pandas DataFrame with 'gold_price' column
+            data: DataFrame with columns: date, gold_price, usd_idr, inflation, interest_rate
+
+        Returns:
+            DataFrame with all 19 engineered features
+        """
+        df = data.copy()
+
+        # Calculate lags
+        df['gold_price_lag_1'] = df['gold_price'].shift(1)
+        df['gold_price_lag_7'] = df['gold_price'].shift(7)
+        df['gold_price_lag_14'] = df['gold_price'].shift(14)
+        df['usd_idr_lag_1'] = df['usd_idr'].shift(1)
+        df['usd_idr_lag_7'] = df['usd_idr'].shift(7)
+
+        # Calculate moving averages
+        df['gold_price_ma_7'] = df['gold_price'].rolling(window=7, min_periods=1).mean()
+        df['gold_price_ma_14'] = df['gold_price'].rolling(window=14, min_periods=1).mean()
+        df['gold_price_ma_30'] = df['gold_price'].rolling(window=30, min_periods=1).mean()
+        df['usd_idr_ma_7'] = df['usd_idr'].rolling(window=7, min_periods=1).mean()
+
+        # Calculate standard deviations
+        df['gold_price_std_7'] = df['gold_price'].rolling(window=7, min_periods=1).std().fillna(0)
+        df['gold_price_std_14'] = df['gold_price'].rolling(window=14, min_periods=1).std().fillna(0)
+        df['usd_idr_std_7'] = df['usd_idr'].rolling(window=7, min_periods=1).std().fillna(0)
+
+        # Calculate percentage changes
+        df['gold_price_pct_1'] = df['gold_price'].pct_change(1).fillna(0)
+        df['gold_price_pct_7'] = df['gold_price'].pct_change(7).fillna(0)
+        df['usd_idr_pct_1'] = df['usd_idr'].pct_change(1).fillna(0)
+        df['usd_idr_pct_7'] = df['usd_idr'].pct_change(7).fillna(0)
+
+        # Fill NaN values from rolling calculations with forward fill then backward fill
+        df = df.ffill(limit=30).bfill()
+
+        return df
+
+    def _prepare_features(self, data):
+        """
+        Prepare engineered features for the model.
+
+        Args:
+            data: DataFrame with raw columns
+
+        Returns:
+            Tuple of (engineered_df, feature_matrix)
+        """
+        df = self._engineer_features(data)
+
+        # Extract only the feature columns expected by the model
+        feature_cols = self.feature_names if self.feature_names else [
+            'usd_idr', 'inflation', 'interest_rate',
+            'gold_price_lag_1', 'gold_price_lag_7', 'gold_price_lag_14',
+            'usd_idr_lag_1', 'usd_idr_lag_7',
+            'gold_price_ma_7', 'gold_price_ma_14', 'gold_price_ma_30', 'usd_idr_ma_7',
+            'gold_price_std_7', 'gold_price_std_14', 'usd_idr_std_7',
+            'gold_price_pct_1', 'gold_price_pct_7', 'usd_idr_pct_1', 'usd_idr_pct_7'
+        ]
+
+        feature_matrix = df[feature_cols].values
+        return df, feature_matrix
+
+    def predict(self, data, days=30):
+        """
+        Generate multi-step predictions using recursive approach with engineered features.
+
+        Args:
+            data: pandas DataFrame with 'date', 'gold_price', 'usd_idr', 'inflation', 'interest_rate' columns
             days: number of days to predict (1-90)
 
         Returns:
@@ -67,40 +152,63 @@ class GoldPredictor:
                 return self._fallback_predict(data, days)
 
         try:
-            prices = data['gold_price'].values.astype(float).reshape(-1, 1)
+            # Keep a working copy of the data that we'll extend with predictions
+            working_data = data.copy()
 
-            # Scale the data
-            scaled_data = self.scaler.transform(prices)
+            # Prepare engineered features from the data
+            eng_data, features_X = self._prepare_features(working_data)
 
-            # Get the last sequence_length days for initial input
-            last_sequence = scaled_data[-self.sequence_length:]
+            # Scale the features
+            scaled_features = self.scaler_X.transform(features_X)
+
+            # Get the last sequence_length rows for initial input
+            last_sequence = scaled_features[-self.sequence_length:]
 
             # Recursive multi-step prediction
-            predictions_scaled = []
+            predictions = []
             current_input = last_sequence.copy()
 
-            for _ in range(days):
-                # Reshape for model: (1, sequence_length, 1)
-                input_reshaped = current_input.reshape(1, self.sequence_length, 1)
+            for step in range(days):
+                # Reshape for model: (1, sequence_length, num_features)
+                input_reshaped = current_input.reshape(1, self.sequence_length, current_input.shape[1])
 
-                # Predict next value
-                next_pred = self.model.predict(input_reshaped, verbose=0)
-                predictions_scaled.append(next_pred[0, 0])
+                # Predict next value (scaled)
+                next_pred_scaled = self.model.predict(input_reshaped, verbose=0)[0, 0]
 
-                # Debug logging
-                logger.debug(f"Input shape: {input_reshaped.shape}")
-                logger.debug(f"Input range: {input_reshaped.min()} - {input_reshaped.max()}")
-                logger.debug(f"Prediction (scaled): {next_pred[0, 0]}")
+                # Inverse transform the prediction to get actual price
+                next_pred = self.scaler_y.inverse_transform(
+                    np.array([[next_pred_scaled]])
+                )[0, 0]
+                predictions.append(next_pred)
 
-                # Update input: shift left and append prediction
-                current_input = np.append(current_input[1:], [[next_pred[0, 0]]], axis=0)
+                # Add the predicted price to working_data for feature generation
+                last_date = pd.to_datetime(working_data['date'].iloc[-1])
+                next_date = last_date + pd.Timedelta(days=1)
 
-            # Inverse scale predictions
-            predictions_scaled = np.array(predictions_scaled).reshape(-1, 1)
-            predictions = self.scaler.inverse_transform(predictions_scaled).flatten()
+                # Create new row with predicted price (keep other fields from last row)
+                new_row = pd.DataFrame({
+                    'date': [next_date.strftime('%Y-%m-%d')],
+                    'gold_price': [next_pred],
+                    'usd_idr': [working_data['usd_idr'].iloc[-1]],
+                    'inflation': [working_data['inflation'].iloc[-1]],
+                    'interest_rate': [working_data['interest_rate'].iloc[-1]],
+                })
 
-            # Calculate metrics using train/test split approach
-            metrics = self._calculate_metrics(data, scaled_data)
+                working_data = pd.concat([working_data, new_row], ignore_index=True)
+
+                # Re-engineer features for all data (to get proper lags/MAs)
+                _, next_features_X = self._prepare_features(working_data)
+
+                # Scale the features and get the last sequence
+                next_scaled_features = self.scaler_X.transform(next_features_X)
+                current_input = next_scaled_features[-self.sequence_length:]
+
+            predictions = np.array(predictions)
+
+            # Use fast, stable model-level metrics to keep API latency predictable.
+            # Recomputing validation metrics per request is very expensive and can
+            # trigger frontend timeouts on larger datasets.
+            metrics = self._default_metrics()
 
             # Build chart data (last 60 actual + predicted)
             chart_data = self._build_chart_data(data, predictions, days)
@@ -113,51 +221,60 @@ class GoldPredictor:
             }
 
         except Exception as e:
-            logger.error(f"Prediction error: {e}")
+            logger.error(f"Prediction error: {e}", exc_info=True)
             return self._fallback_predict(data, days)
 
-    def _calculate_metrics(self, data, scaled_data):
+    def _calculate_metrics(self, data):
         """Calculate model performance metrics on a validation split."""
         try:
             prices = data['gold_price'].values.astype(float)
 
-            # Use last 10% as test set
-            split_idx = int(len(scaled_data) * 0.9)
-            test_data = scaled_data[split_idx:]
+            # Prepare engineered features
+            eng_data, features_X = self._prepare_features(data)
 
-            if len(test_data) < self.sequence_length + 1:
+            # Use last 10% as test set
+            split_idx = int(len(features_X) * 0.9)
+            test_features = features_X[split_idx:]
+            test_prices = prices[split_idx:]
+
+            if len(test_features) < self.sequence_length + 1:
                 return self._default_metrics()
+
+            # Scale test features
+            scaled_test_features = self.scaler_X.transform(test_features)
 
             # Generate test predictions
             actuals = []
             preds = []
 
-            for i in range(self.sequence_length, len(test_data)):
-                seq = scaled_data[split_idx + i - self.sequence_length:split_idx + i]
-                seq_reshaped = seq.reshape(1, self.sequence_length, 1)
-                pred = self.model.predict(seq_reshaped, verbose=0)
-                preds.append(pred[0, 0])
-                actuals.append(test_data[i, 0])
+            for i in range(self.sequence_length, len(scaled_test_features)):
+                seq = scaled_test_features[i - self.sequence_length:i]
+                seq_reshaped = seq.reshape(1, self.sequence_length, seq.shape[1])
+                pred_scaled = self.model.predict(seq_reshaped, verbose=0)[0, 0]
+
+                # Inverse transform
+                pred = self.scaler_y.inverse_transform(np.array([[pred_scaled]]))[0, 0]
+                preds.append(pred)
+                actuals.append(test_prices[i])
 
             if len(preds) == 0:
                 return self._default_metrics()
 
-            # Inverse transform
-            actuals_inv = self.scaler.inverse_transform(np.array(actuals).reshape(-1, 1)).flatten()
-            preds_inv = self.scaler.inverse_transform(np.array(preds).reshape(-1, 1)).flatten()
+            actuals_arr = np.array(actuals)
+            preds_arr = np.array(preds)
 
             # RMSE
-            rmse = np.sqrt(np.mean((actuals_inv - preds_inv) ** 2))
+            rmse = np.sqrt(np.mean((actuals_arr - preds_arr) ** 2))
             # Normalize RMSE to 0-1 scale
             price_range = prices.max() - prices.min()
             rmse_normalized = rmse / price_range if price_range > 0 else rmse
 
             # MAE
-            mae = np.mean(np.abs(actuals_inv - preds_inv))
+            mae = np.mean(np.abs(actuals_arr - preds_arr))
             mae_normalized = mae / price_range if price_range > 0 else mae
 
             # MAPE
-            mape = np.mean(np.abs((actuals_inv - preds_inv) / actuals_inv)) * 100
+            mape = np.mean(np.abs((actuals_arr - preds_arr) / actuals_arr)) * 100
 
             # Confidence score (inverse of MAPE, capped at 99)
             confidence = min(100 - mape, 99.0)

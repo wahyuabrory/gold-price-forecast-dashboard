@@ -42,18 +42,50 @@ def _parse_csv(df):
     if price_col is None:
         price_col = df.columns[1]
 
+    # Detect optional columns (usd_idr, inflation, interest_rate)
+    usd_idr_col = None
+    inflation_col = None
+    interest_rate_col = None
+
+    for col in df.columns:
+        col_lower = col.lower()
+        if 'usd' in col_lower or 'idr' in col_lower:
+            usd_idr_col = col
+        elif 'inflation' in col_lower:
+            inflation_col = col
+        elif 'interest' in col_lower or 'rate' in col_lower:
+            interest_rate_col = col
+
     # Parse dates
     df[date_col] = pd.to_datetime(df[date_col], format='mixed', dayfirst=False)
     df = df.sort_values(date_col).reset_index(drop=True)
 
     # Build standard dataframe
-    result = pd.DataFrame({
+    result = {
         'date': df[date_col].dt.strftime('%Y-%m-%d'),
         'gold_price': pd.to_numeric(df[price_col], errors='coerce'),
-    })
-    result = result.dropna()
+    }
 
-    return result
+    # Add optional columns if available, otherwise use defaults
+    if usd_idr_col:
+        result['usd_idr'] = pd.to_numeric(df[usd_idr_col], errors='coerce')
+    else:
+        result['usd_idr'] = 13000.0  # Default USD-IDR rate
+
+    if inflation_col:
+        result['inflation'] = pd.to_numeric(df[inflation_col], errors='coerce')
+    else:
+        result['inflation'] = 0.03  # Default inflation rate
+
+    if interest_rate_col:
+        result['interest_rate'] = pd.to_numeric(df[interest_rate_col], errors='coerce')
+    else:
+        result['interest_rate'] = 0.05  # Default interest rate
+
+    result_df = pd.DataFrame(result)
+    result_df = result_df.dropna(subset=['date', 'gold_price'])
+
+    return result_df
 
 
 @api_bp.route('/upload', methods=['POST'])
