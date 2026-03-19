@@ -1,9 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import {
-  Upload, Database, Sparkles, Download, TrendingDown, CheckCircle, BarChart3, ShieldCheck,
+  Upload, Database, Sparkles, Download, TrendingDown, CheckCircle, BarChart3, ShieldCheck, X
 } from 'lucide-react';
 import { uploadCSV, loadSampleData, generatePrediction, exportPredictions } from '../services/api';
 import { formatRupiah, formatChartDate } from '../utils/formatters';
@@ -27,16 +28,32 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
+let PredictCache = null;
+
 export default function Predict() {
-  const [dataSource, setDataSource] = useState('csv');
-  const [predDays, setPredDays] = useState(30);
-  const [dataLoaded, setDataLoaded] = useState(false);
-  const [chartData, setChartData] = useState([]);
-  const [metrics, setMetrics] = useState(null);
+  const [dataSource, setDataSource] = useState(PredictCache?.dataSource || 'csv');
+  const [predDays, setPredDays] = useState(PredictCache?.predDays || 30);
+  const [dataLoaded, setDataLoaded] = useState(PredictCache?.dataLoaded || false);
+  const [chartData, setChartData] = useState(PredictCache?.chartData || []);
+  const [metrics, setMetrics] = useState(PredictCache?.metrics || null);
   const [isLoading, setIsLoading] = useState(false);
   const [isPredicting, setIsPredicting] = useState(false);
-  const [fileName, setFileName] = useState('');
+  const [fileName, setFileName] = useState(PredictCache?.fileName || '');
   const [dragActive, setDragActive] = useState(false);
+  const [ripples, setRipples] = useState([]);
+
+  useEffect(() => {
+    PredictCache = {
+      dataSource, predDays, dataLoaded, chartData, metrics, fileName
+    };
+  }, [dataSource, predDays, dataLoaded, chartData, metrics, fileName]);
+
+  const handlePointerDown = useCallback((e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setRipples((prev) => [...prev, { x, y, id: Date.now() }]);
+  }, []);
 
   const handleFileUpload = useCallback(async (file) => {
     if (!file) return;
@@ -129,9 +146,26 @@ export default function Predict() {
           </p>
         </div>
         {dataLoaded && (
-          <div className="flex items-center gap-2 text-sm text-slate-500 bg-white dark:bg-slate-800 px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
-            <CheckCircle className="w-4 h-4 text-emerald-500" />
-            <span>{fileName}</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-sm text-slate-500 bg-white dark:bg-slate-800 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+              <CheckCircle className="w-4 h-4 text-emerald-500" />
+              <span className="font-medium truncate max-w-[200px]">{fileName}</span>
+            </div>
+            <button 
+              onClick={() => {
+                PredictCache = null;
+                setDataSource('csv');
+                setPredDays(30);
+                setDataLoaded(false);
+                setChartData([]);
+                setMetrics(null);
+                setFileName('');
+              }}
+              title="Reset Data"
+              className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition border border-transparent hover:border-rose-100 dark:hover:border-rose-900/50"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
       </header>
@@ -215,28 +249,108 @@ export default function Predict() {
               </div>
             </div>
           </div>
-          <button
+          <motion.button
+            whileTap={(!dataLoaded || isPredicting) ? undefined : { scale: 0.98 }}
+            onPointerDown={(!dataLoaded || isPredicting) ? undefined : handlePointerDown}
             onClick={handleGeneratePredictions}
             disabled={!dataLoaded || isPredicting}
-            className="w-full py-4 bg-primary hover:bg-amber-600 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
+            className={`w-full py-4 relative overflow-hidden text-white font-bold rounded-xl transition-all duration-500 flex items-center justify-center gap-2 ${!dataLoaded || isPredicting ? 'cursor-not-allowed shadow-none' : 'shadow-[0_8px_30px_rgb(212,175,55,0.2)] hover:shadow-[0_8px_40px_rgb(212,175,55,0.4)]'}`}
           >
-            {isPredicting ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Memproses...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-5 h-5" />
-                Generate Prediction
-              </>
+            {/* Structural Backdrop Shift */}
+            <div className={`absolute inset-0 transition-colors duration-500 ${!dataLoaded && !isPredicting ? 'bg-slate-200 dark:bg-slate-700' : 'bg-primary'}`} />
+
+            {/* Glowing inner pulse - warm amber */}
+            {isPredicting && (
+                <motion.div 
+                    className="absolute inset-0 bg-gradient-to-tr from-amber-600/0 via-amber-400/60 to-yellow-300/0 mix-blend-overlay pointer-events-none z-10"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: [0, 1, 0], scale: [0.95, 1.05, 0.95] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                />
             )}
-          </button>
+
+            {/* Continuous Flowing Gold Gradient Border (Active) */}
+            {isPredicting && (
+                 <div className="absolute inset-[-150%] pointer-events-none z-0">
+                    <motion.div
+                       animate={{ rotate: 360 }}
+                       transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                       className="w-full h-full bg-[conic-gradient(from_0deg,transparent_0%,transparent_70%,rgba(255,215,0,1)_100%)] origin-center opacity-80"
+                    />
+                 </div>
+            )}
+
+            {/* Inner Mask (creates the border effect if active or transparent if idle) */}
+            <div className={`absolute inset-[2px] rounded-[10px] pointer-events-none z-0 transition-all duration-500 ${isPredicting ? 'bg-primary border border-white/10 shadow-[inset_0_0_20px_rgba(0,0,0,0.2)]' : 'bg-transparent'}`} />
+
+            {/* Ripples Element */}
+            <div className="absolute inset-0 z-20 overflow-hidden pointer-events-none rounded-xl">
+              <AnimatePresence>
+                {ripples.map((rip) => (
+                  <motion.span
+                    key={rip.id}
+                    initial={{ scale: 0, opacity: 0.6 }}
+                    animate={{ scale: 4, opacity: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.8, ease: [0.19, 1, 0.22, 1] }}
+                    className="absolute bg-white/40 dark:bg-yellow-200/50 rounded-full"
+                    style={{ left: rip.x, top: rip.y, width: 100, height: 100, transform: 'translate(-50%, -50%)' }}
+                    onAnimationComplete={() => setRipples((prev) => prev.filter((r) => r.id !== rip.id))}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+
+            {/* Content */}
+            <motion.div 
+               layout
+               transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+               className={`relative z-30 flex items-center gap-2 ${(!dataLoaded && !isPredicting) ? 'text-slate-400' : 'text-white'}`}
+            >
+              {isPredicting ? (
+                <>
+                  <Sparkles className="w-5 h-5 animate-pulse text-yellow-200" />
+                  <span className="tracking-wide">Memproses...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-5 h-5 drop-shadow-md" />
+                  <span className="tracking-wide">Generate Prediction</span>
+                </>
+              )}
+            </motion.div>
+          </motion.button>
         </div>
       </div>
 
       {/* Chart Section */}
-      <section className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm mb-8">
+      <section className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm mb-8 relative overflow-hidden">
+        {/* Glassmorphism Loader Banner Overlay */}
+        <AnimatePresence>
+          {isPredicting && (
+            <motion.div
+              initial={{ opacity: 0, backdropFilter: 'blur(0px)' }}
+              animate={{ opacity: 1, backdropFilter: 'blur(8px)' }}
+              exit={{ opacity: 0, backdropFilter: 'blur(0px)' }}
+              className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/30 dark:bg-slate-900/40 border border-white/20 dark:border-slate-700/20"
+            >
+              <motion.div 
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-md px-8 py-6 rounded-2xl shadow-xl border border-white/50 dark:border-slate-700/50 flex flex-col items-center max-w-sm text-center"
+              >
+                <motion.div 
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                  className="w-14 h-14 rounded-full border-t-2 border-r-2 border-primary mb-4"
+                />
+                <h3 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-amber-600 mb-2">Mengolah Prediksi...</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Deep learning model GRU sedang mensintesis pola historis untuk proyeksi harga.</p>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
             <h2 className="text-xl font-bold flex items-center gap-2">
@@ -281,6 +395,7 @@ export default function Predict() {
                   interval="preserveStartEnd"
                 />
                 <YAxis
+                  domain={['dataMin', 'dataMax']}
                   tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
                   tick={{ fontSize: 12, fill: '#94a3b8' }}
                   axisLine={false}
@@ -320,48 +435,92 @@ export default function Predict() {
       {/* Bottom Grid: Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {/* Card 1 */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
-          <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl w-fit mb-4">
-            <TrendingDown className="w-5 h-5 text-primary rotate-180" />
+        <motion.div 
+          animate={isPredicting ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
+          transition={{ duration: 2, repeat: isPredicting ? Infinity : 0, ease: 'easeInOut' }}
+          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredicting ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
+        >
+          {isPredicting && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
+          <div className="relative z-10">
+            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredicting ? 'bg-primary/20 dark:bg-primary/30' : 'bg-yellow-50 dark:bg-yellow-900/20'}`}>
+              <TrendingDown className={`w-5 h-5 transition-colors ${isPredicting ? 'text-amber-600 dark:text-amber-400' : 'text-primary'} rotate-180`} />
+            </div>
+            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Prediksi Hari ke-{predDays}</p>
+            <h3 className="text-2xl font-bold mt-1">
+              {isPredicting ? (
+                  <motion.div className="h-8 w-2/3 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
+              ) : (
+                  chartData.length > 0 ? formatRupiah(chartData[chartData.length - 1].predicted) : '—'
+              )}
+            </h3>
           </div>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Prediksi Hari ke-{predDays}</p>
-          <h3 className="text-2xl font-bold mt-1">
-            {chartData.length > 0 ? formatRupiah(chartData[chartData.length - 1].predicted) : '—'}
-          </h3>
-        </div>
+        </motion.div>
 
         {/* Card 2 */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
-          <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl w-fit mb-4">
-            <ShieldCheck className="w-5 h-5 text-indigo-500" />
+        <motion.div 
+          animate={isPredicting ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
+          transition={{ duration: 2, delay: 0.2, repeat: isPredicting ? Infinity : 0, ease: 'easeInOut' }}
+          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredicting ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
+        >
+          {isPredicting && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
+          <div className="relative z-10">
+            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredicting ? 'bg-primary/20 dark:bg-primary/30' : 'bg-indigo-50 dark:bg-indigo-900/20'}`}>
+              <ShieldCheck className={`w-5 h-5 transition-colors ${isPredicting ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-500'}`} />
+            </div>
+            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Konfiden Skor</p>
+            <h3 className="text-2xl font-bold mt-1">
+              {isPredicting ? (
+                  <motion.div className="h-8 w-1/2 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
+              ) : (
+                  metrics ? `${metrics.confidence_score?.toFixed(1)}%` : '—'
+              )}
+            </h3>
           </div>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Konfiden Skor</p>
-          <h3 className="text-2xl font-bold mt-1">
-            {metrics ? `${metrics.confidence_score?.toFixed(1)}%` : '—'}
-          </h3>
-        </div>
+        </motion.div>
 
         {/* Card 3 */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
-          <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl w-fit mb-4">
-            <CheckCircle className="w-5 h-5 text-emerald-500" />
+        <motion.div 
+          animate={isPredicting ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
+          transition={{ duration: 2, delay: 0.4, repeat: isPredicting ? Infinity : 0, ease: 'easeInOut' }}
+          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredicting ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
+        >
+          {isPredicting && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
+          <div className="relative z-10">
+            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredicting ? 'bg-primary/20 dark:bg-primary/30' : 'bg-emerald-50 dark:bg-emerald-900/20'}`}>
+              <CheckCircle className={`w-5 h-5 transition-colors ${isPredicting ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-500'}`} />
+            </div>
+            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Akurasi Model (MAPE)</p>
+            <h3 className="text-2xl font-bold mt-1">
+              {isPredicting ? (
+                  <motion.div className="h-8 w-1/2 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
+              ) : (
+                  metrics ? `${metrics.mape?.toFixed(1)}%` : '—'
+              )}
+            </h3>
           </div>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Akurasi Model (MAPE)</p>
-          <h3 className="text-2xl font-bold mt-1">
-            {metrics ? `${metrics.mape?.toFixed(1)}%` : '—'}
-          </h3>
-        </div>
+        </motion.div>
 
         {/* Card 4 */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
-          <div className="p-3 bg-rose-50 dark:bg-rose-900/20 rounded-xl w-fit mb-4">
-            <Database className="w-5 h-5 text-rose-500" />
+        <motion.div 
+          animate={isPredicting ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
+          transition={{ duration: 2, delay: 0.6, repeat: isPredicting ? Infinity : 0, ease: 'easeInOut' }}
+          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredicting ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
+        >
+          {isPredicting && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
+          <div className="relative z-10">
+            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredicting ? 'bg-primary/20 dark:bg-primary/30' : 'bg-rose-50 dark:bg-rose-900/20'}`}>
+              <Database className={`w-5 h-5 transition-colors ${isPredicting ? 'text-amber-600 dark:text-amber-400' : 'text-rose-500'}`} />
+            </div>
+            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Status Data</p>
+            <h3 className="text-2xl font-bold mt-1">
+              {isPredicting ? (
+                  <motion.div className="h-8 w-2/3 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
+              ) : (
+                  dataLoaded ? "Tersedia" : "Belum Ada"
+              )}
+            </h3>
           </div>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Status Data</p>
-          <h3 className="text-2xl font-bold mt-1">
-            {dataLoaded ? "Tersedia" : "Belum Ada"}
-          </h3>
-        </div>
+        </motion.div>
       </div>
     </div>
   );

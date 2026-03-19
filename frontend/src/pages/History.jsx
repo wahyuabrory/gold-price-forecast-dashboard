@@ -179,6 +179,7 @@ export default function History() {
                   interval="preserveStartEnd"
                 />
                 <YAxis
+                  domain={['dataMin', 'dataMax']}
                   tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
                   tick={{ fontSize: 12, fill: '#94a3b8' }}
                   axisLine={false}
