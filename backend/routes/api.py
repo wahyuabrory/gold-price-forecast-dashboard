@@ -57,7 +57,27 @@ def _parse_csv(df):
             interest_rate_col = col
 
     # Parse dates
-    df[date_col] = pd.to_datetime(df[date_col], format='mixed', dayfirst=False)
+    raw_dates = df[date_col].astype(str).str.strip()
+
+    # Try both day-first strategies and pick the one with fewer parsing failures.
+    # This helps mixed Indonesian/English style datasets without changing API contract.
+    parsed_dates_dayfirst_false = pd.to_datetime(raw_dates, format='mixed', dayfirst=False, errors='coerce')
+    parsed_dates_dayfirst_true = pd.to_datetime(raw_dates, format='mixed', dayfirst=True, errors='coerce')
+
+    nat_false = int(parsed_dates_dayfirst_false.isna().sum())
+    nat_true = int(parsed_dates_dayfirst_true.isna().sum())
+
+    preferred_dayfirst = date_col in ('tanggal',)
+    if nat_true < nat_false:
+        df[date_col] = parsed_dates_dayfirst_true
+    elif nat_false < nat_true:
+        df[date_col] = parsed_dates_dayfirst_false
+    else:
+        df[date_col] = parsed_dates_dayfirst_true if preferred_dayfirst else parsed_dates_dayfirst_false
+
+    if df[date_col].isna().all():
+        raise ValueError('Kolom tanggal tidak dapat diparse. Gunakan format tanggal yang valid.')
+
     df = df.sort_values(date_col).reset_index(drop=True)
 
     # Build standard dataframe
@@ -70,20 +90,33 @@ def _parse_csv(df):
     if usd_idr_col:
         result['usd_idr'] = pd.to_numeric(df[usd_idr_col], errors='coerce')
     else:
+        logger.warning('Kolom usd_idr tidak ditemukan. Menggunakan default 13000.0')
         result['usd_idr'] = 13000.0  # Default USD-IDR rate
 
     if inflation_col:
         result['inflation'] = pd.to_numeric(df[inflation_col], errors='coerce')
     else:
+        logger.warning('Kolom inflation tidak ditemukan. Menggunakan default 0.03')
         result['inflation'] = 0.03  # Default inflation rate
 
     if interest_rate_col:
         result['interest_rate'] = pd.to_numeric(df[interest_rate_col], errors='coerce')
     else:
+        logger.warning('Kolom interest_rate tidak ditemukan. Menggunakan default 0.05')
         result['interest_rate'] = 0.05  # Default interest rate
 
     result_df = pd.DataFrame(result)
+
+    # Fill optional numeric columns robustly to avoid NaNs entering model features.
+    for col in ['usd_idr', 'inflation', 'interest_rate']:
+        result_df[col] = pd.to_numeric(result_df[col], errors='coerce')
+        if result_df[col].isna().any():
+            result_df[col] = result_df[col].ffill().bfill()
+
     result_df = result_df.dropna(subset=['date', 'gold_price'])
+
+    # Defensive dedupe on date while keeping latest occurrence.
+    result_df = result_df.drop_duplicates(subset=['date'], keep='last').reset_index(drop=True)
 
     return result_df
 
@@ -160,8 +193,11 @@ def predict():
     if not dataset_json:
         return jsonify({'success': False, 'error': 'Upload dataset terlebih dahulu'}), 400
 
-    data = request.get_json() or {}
-    days = min(max(int(data.get('days', 30)), 1), 90)
+    data = request.get_json(silent=True) or {}
+    try:
+        days = min(max(int(data.get('days', 30)), 1), 90)
+    except (TypeError, ValueError):
+        days = 30
 
     try:
         df = pd.read_json(io.StringIO(dataset_json), orient='records')
@@ -170,7 +206,9 @@ def predict():
             df['date'] = df['date'].dt.strftime('%Y-%m-%d')
 
         # Ensure model is loaded
-        predictor.load_model()
+        model_loaded = predictor.load_model()
+        if not model_loaded:
+            logger.warning('Model failed to load. Predictor may use fallback mode.')
 
         # Generate predictions
         result = predictor.predict(df, days=days)
@@ -178,11 +216,20 @@ def predict():
         # Store predictions in session
         if result.get('success'):
             session['predictions'] = result.get('predictions', [])
+            prediction_count = len(result.get('predictions', []))
             session['prediction_dates'] = [
                 (pd.to_datetime(df['date'].iloc[-1]) + pd.Timedelta(days=i+1)).strftime('%Y-%m-%d')
-                for i in range(days)
+                for i in range(prediction_count)
             ]
             session['metrics'] = result.get('metrics', {})
+            session['model_mode'] = 'fallback' if result.get('fallback') else 'gru'
+
+        logger.info(
+            "Prediction request served: horizon_days=%s, success=%s, fallback=%s",
+            days,
+            bool(result.get('success')),
+            bool(result.get('fallback', False)),
+        )
 
         return jsonify(result)
 
