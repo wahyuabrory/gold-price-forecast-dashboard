@@ -19,6 +19,53 @@ SAMPLE_DATA_PATH = os.path.join(
 )
 
 
+@api_bp.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint for monitoring and load balancers."""
+    # Check if model is loaded
+    model_loaded = predictor._loaded
+    if not model_loaded:
+        # Try to load model on first health check
+        model_loaded = predictor.load_model()
+
+    # Check if dataset is in session
+    dataset_loaded = 'dataset' in session
+
+    # Get dataset info if available
+    dataset_info = None
+    if dataset_loaded:
+        try:
+            records = session.get('records', 0)
+            filename = session.get('filename', 'unknown')
+            dataset_info = {
+                'loaded': True,
+                'records': records,
+                'filename': filename,
+            }
+        except Exception as e:
+            logger.error(f"Error reading dataset from session: {e}")
+            dataset_info = {'loaded': False}
+
+    # Determine overall health status
+    is_healthy = model_loaded
+
+    response = {
+        'status': 'healthy' if is_healthy else 'degraded',
+        'timestamp': datetime.now().isoformat(),
+        'model': {
+            'loaded': model_loaded,
+            'lookback': predictor.sequence_length if model_loaded else None,
+            'features': len(predictor.feature_names) if model_loaded and predictor.feature_names else None,
+        },
+        'dataset': dataset_info or {'loaded': False},
+        'version': '1.0.0',
+    }
+
+    # Return 200 if healthy, 503 if model failed to load
+    status_code = 200 if is_healthy else 503
+    return jsonify(response), status_code
+
+
 def _parse_csv(df):
     """Parse and normalize CSV DataFrame to standard format."""
     # Normalize column names
