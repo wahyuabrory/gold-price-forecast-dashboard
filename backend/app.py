@@ -1,10 +1,16 @@
 import os
 import logging
 from datetime import timedelta
+from pathlib import Path
 
+from dotenv import load_dotenv
 from flask import Flask
 from flask_cors import CORS
 from flask_session import Session
+
+# Load environment variables from .env file (if it exists)
+env_path = Path(__file__).parent / '.env'
+load_dotenv(env_path)
 
 def _validate_environment():
     """Validate required environment variables on startup."""
