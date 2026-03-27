@@ -6,34 +6,54 @@ from flask import Flask
 from flask_cors import CORS
 from flask_session import Session
 
+def _validate_environment():
+    """Validate required environment variables on startup."""
+    required_vars = ['SECRET_KEY']
+    missing = [var for var in required_vars if not os.environ.get(var)]
+
+    if missing:
+        raise ValueError(
+            f"Missing required environment variable(s): {', '.join(missing)}. "
+            f"See backend/.env.example for configuration template."
+        )
+
 def create_app():
+    # Validate environment before creating app
+    _validate_environment()
+
     app = Flask(__name__)
-    
-    # Configuration
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'aurum-predict-dev-key-2026')
+
+    # Configuration - SECRET_KEY is required (no default fallback)
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
     app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max upload
-    
+
     # Session configuration (filesystem-based)
     app.config['SESSION_TYPE'] = 'filesystem'
     app.config['SESSION_FILE_DIR'] = os.path.join(os.path.dirname(__file__), 'flask_session')
     app.config['SESSION_PERMANENT'] = True
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=4)
     app.config['SESSION_FILE_THRESHOLD'] = 100
-    
-    # Initialize extensions
-    CORS(app, supports_credentials=True)
+
+    # Initialize extensions with secure CORS configuration
+    cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+    cors_origins = [origin.strip() for origin in cors_origins]  # Clean whitespace
+
+    CORS(app,
+         origins=cors_origins,
+         supports_credentials=True,
+         max_age=3600)
     Session(app)
-    
+
     # Register blueprints
     from routes.api import api_bp
     app.register_blueprint(api_bp)
-    
+
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
     )
-    
+
     return app
 
 if __name__ == '__main__':
