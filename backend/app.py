@@ -52,7 +52,9 @@ def create_app():
 
     # Register blueprints
     from routes.api import api_bp
+    from routes.demo import demo_bp
     app.register_blueprint(api_bp)
+    app.register_blueprint(demo_bp)
 
     # Setup logging
     logging.basicConfig(
