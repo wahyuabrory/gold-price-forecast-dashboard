@@ -36,3 +36,8 @@ backend/env/
 backend/.env
 backend/.env.*
 backend/.pytest_cache/
+
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
