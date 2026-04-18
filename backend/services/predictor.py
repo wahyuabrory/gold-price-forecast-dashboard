@@ -7,18 +7,34 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Path to model files
-MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'backend/models')
+MODEL_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "..", "backend/models"
+)
 
 DEFAULT_FEATURE_NAMES = [
-    'usd_idr', 'inflation', 'interest_rate',
-    'gold_price_lag_1', 'gold_price_lag_7', 'gold_price_lag_14',
-    'usd_idr_lag_1', 'usd_idr_lag_7',
-    'gold_price_ma_7', 'gold_price_ma_14', 'gold_price_ma_30', 'usd_idr_ma_7',
-    'gold_price_std_7', 'gold_price_std_14', 'usd_idr_std_7',
-    'gold_price_pct_1', 'gold_price_pct_7', 'usd_idr_pct_1', 'usd_idr_pct_7'
+    "usd_idr",
+    "inflation",
+    "interest_rate",
+    "gold_price_lag_1",
+    "gold_price_lag_7",
+    "gold_price_lag_14",
+    "usd_idr_lag_1",
+    "usd_idr_lag_7",
+    "gold_price_ma_7",
+    "gold_price_ma_14",
+    "gold_price_ma_30",
+    "usd_idr_ma_7",
+    "gold_price_std_7",
+    "gold_price_std_14",
+    "usd_idr_std_7",
+    "gold_price_pct_1",
+    "gold_price_pct_7",
+    "usd_idr_pct_1",
+    "usd_idr_pct_7",
 ]
 
-EXOGENOUS_FEATURES = ('usd_idr', 'inflation', 'interest_rate')
+EXOGENOUS_FEATURES = ("usd_idr", "inflation", "interest_rate")
+
 
 class GoldPredictor:
     """
@@ -44,6 +60,7 @@ class GoldPredictor:
         self.feature_names = None
         self.price_range = None
         self.feature_ranges = {}
+        self._metrics_cache = {}
 
     def load_model(self):
         """Load GRU model, scaler, and metadata from disk."""
@@ -51,35 +68,36 @@ class GoldPredictor:
             return True
 
         try:
-            model_path = os.path.join(MODEL_DIR, 'gru_90-10.keras')
-            scaler_path = os.path.join(MODEL_DIR, 'scalers_90-10.joblib')
-            meta_path = os.path.join(MODEL_DIR, 'meta_90-10.joblib')
+            model_path = os.path.join(MODEL_DIR, "gru_90-10.keras")
+            scaler_path = os.path.join(MODEL_DIR, "scalers_90-10.joblib")
+            meta_path = os.path.join(MODEL_DIR, "meta_90-10.joblib")
 
             logger.info(f"Loading model from {model_path}")
 
             # Import tensorflow lazily to avoid slow startup
             import tensorflow as tf
-            tf.get_logger().setLevel('ERROR')
+
+            tf.get_logger().setLevel("ERROR")
 
             self.model = tf.keras.models.load_model(model_path)
 
             # Load scalers (stored as dict with scaler_X and scaler_y)
             scalers_dict = joblib.load(scaler_path)
-            self.scaler_X = scalers_dict.get('scaler_X')
-            self.scaler_y = scalers_dict.get('scaler_y')
+            self.scaler_X = scalers_dict.get("scaler_X")
+            self.scaler_y = scalers_dict.get("scaler_y")
 
             self.meta = joblib.load(meta_path)
 
             # Get sequence length and feature names from metadata
             if isinstance(self.meta, dict):
-                self.sequence_length = self.meta.get('lookback', 60)
-                self.feature_names = self.meta.get('features', [])
+                self.sequence_length = self.meta.get("lookback", 60)
+                self.feature_names = self.meta.get("features", [])
 
                 # Optional metadata range keys for safer long-horizon recursion
                 self.price_range = (
-                    self.meta.get('price_range')
-                    or self.meta.get('target_range')
-                    or self.meta.get('y_range')
+                    self.meta.get("price_range")
+                    or self.meta.get("target_range")
+                    or self.meta.get("y_range")
                 )
 
             # Enforce feature ordering for inference consistency
@@ -94,10 +112,19 @@ class GoldPredictor:
             self.feature_ranges = self._extract_feature_ranges()
 
             # Fallback price range from target scaler if metadata does not provide it
-            if self.price_range is None and hasattr(self.scaler_y, 'data_min_') and hasattr(self.scaler_y, 'data_max_'):
-                self.price_range = [float(self.scaler_y.data_min_[0]), float(self.scaler_y.data_max_[0])]
+            if (
+                self.price_range is None
+                and hasattr(self.scaler_y, "data_min_")
+                and hasattr(self.scaler_y, "data_max_")
+            ):
+                self.price_range = [
+                    float(self.scaler_y.data_min_[0]),
+                    float(self.scaler_y.data_max_[0]),
+                ]
 
-            logger.info(f"Model loaded successfully. Sequence length: {self.sequence_length}, Features: {len(self.feature_names)}")
+            logger.info(
+                f"Model loaded successfully. Sequence length: {self.sequence_length}, Features: {len(self.feature_names)}"
+            )
             self._loaded = True
             return True
 
@@ -111,7 +138,9 @@ class GoldPredictor:
         if self.scaler_X is None:
             return ranges
 
-        if not hasattr(self.scaler_X, 'data_min_') or not hasattr(self.scaler_X, 'data_max_'):
+        if not hasattr(self.scaler_X, "data_min_") or not hasattr(
+            self.scaler_X, "data_max_"
+        ):
             return ranges
 
         mins = self.scaler_X.data_min_
@@ -136,12 +165,14 @@ class GoldPredictor:
             lower, upper = upper, lower
 
         span = upper - lower
-        margin = span * margin_ratio if span > 0 else max(abs(lower), 1.0) * margin_ratio
+        margin = (
+            span * margin_ratio if span > 0 else max(abs(lower), 1.0) * margin_ratio
+        )
         return float(np.clip(value, lower - margin, upper + margin))
 
     def _project_exogenous_series(self, series, steps, feature_name, window=14):
         """Project future exogenous values using damped linear trend over recent history."""
-        numeric = pd.to_numeric(series, errors='coerce').ffill().bfill()
+        numeric = pd.to_numeric(series, errors="coerce").ffill().bfill()
         if numeric.empty:
             base = 0.0
             slope = 0.0
@@ -161,10 +192,15 @@ class GoldPredictor:
         # Clip projection to training feature range with margin
         feat_range = self.feature_ranges.get(feature_name)
         if feat_range:
-            projected = np.array([
-                self._clip_with_margin(v, feat_range[0], feat_range[1], margin_ratio=0.20)
-                for v in projected
-            ], dtype=float)
+            projected = np.array(
+                [
+                    self._clip_with_margin(
+                        v, feat_range[0], feat_range[1], margin_ratio=0.20
+                    )
+                    for v in projected
+                ],
+                dtype=float,
+            )
 
         return projected
 
@@ -197,7 +233,7 @@ class GoldPredictor:
         # Expand bounds using recent observed market levels so old scaler ranges
         # do not force unrealistic flat caps when price regime has shifted upward.
         if observed_prices is not None:
-            obs = pd.to_numeric(observed_prices, errors='coerce').dropna()
+            obs = pd.to_numeric(observed_prices, errors="coerce").dropna()
             if not obs.empty:
                 recent = obs.tail(max(self.sequence_length, 60)).astype(float)
                 obs_min = float(recent.min())
@@ -225,7 +261,7 @@ class GoldPredictor:
         if preds.size == 0:
             return preds
 
-        history = pd.to_numeric(observed_prices, errors='coerce').dropna()
+        history = pd.to_numeric(observed_prices, errors="coerce").dropna()
         if history.empty:
             return preds
 
@@ -240,17 +276,23 @@ class GoldPredictor:
         if abs(level_gap_pct) >= 0.025:
             recent = history.tail(min(14, len(history))).astype(float).values
             if len(recent) >= 2:
-                recent_slope = float(np.polyfit(np.arange(len(recent), dtype=float), recent, 1)[0])
+                recent_slope = float(
+                    np.polyfit(np.arange(len(recent), dtype=float), recent, 1)[0]
+                )
             else:
                 recent_slope = 0.0
 
             # Build a conservative day-1 anchor based on recent slope.
             trend_target = last_price + recent_slope
-            trend_target = float(np.clip(trend_target, last_price * 0.96, last_price * 1.04))
+            trend_target = float(
+                np.clip(trend_target, last_price * 0.96, last_price * 1.04)
+            )
 
             # Stronger gaps get stronger anchoring but keep model dynamics dominant.
             anchor_weight = float(np.clip(abs(level_gap_pct) * 8.0, 0.25, 0.60))
-            target_day1 = (1.0 - anchor_weight) * first_pred + anchor_weight * trend_target
+            target_day1 = (
+                1.0 - anchor_weight
+            ) * first_pred + anchor_weight * trend_target
             offset = target_day1 - first_pred
 
             # Apply decayed offset across horizon to preserve long-term model structure.
@@ -268,11 +310,18 @@ class GoldPredictor:
         # blend lightly with damped recent trend to avoid unrealistic degradation.
         if len(preds) >= 7 and len(history) >= 7:
             recent = history.tail(min(14, len(history))).astype(float).values
-            recent_slope = float(np.polyfit(np.arange(len(recent), dtype=float), recent, 1)[0])
+            recent_slope = float(
+                np.polyfit(np.arange(len(recent), dtype=float), recent, 1)[0]
+            )
             pred_slope = float(np.polyfit(np.arange(7, dtype=float), preds[:7], 1)[0])
 
-            if np.sign(recent_slope) != np.sign(pred_slope) and abs(recent_slope) > 1000:
-                trend_line = preds[0] + np.arange(len(preds), dtype=float) * (recent_slope * 0.35)
+            if (
+                np.sign(recent_slope) != np.sign(pred_slope)
+                and abs(recent_slope) > 1000
+            ):
+                trend_line = preds[0] + np.arange(len(preds), dtype=float) * (
+                    recent_slope * 0.35
+                )
                 preds = (preds * 0.75) + (trend_line * 0.25)
                 logger.info(
                     "Applied trend safeguard: recent_slope=%.2f pred_slope=%.2f",
@@ -295,28 +344,38 @@ class GoldPredictor:
         df = data.copy()
 
         # Calculate lags
-        df['gold_price_lag_1'] = df['gold_price'].shift(1)
-        df['gold_price_lag_7'] = df['gold_price'].shift(7)
-        df['gold_price_lag_14'] = df['gold_price'].shift(14)
-        df['usd_idr_lag_1'] = df['usd_idr'].shift(1)
-        df['usd_idr_lag_7'] = df['usd_idr'].shift(7)
+        df["gold_price_lag_1"] = df["gold_price"].shift(1)
+        df["gold_price_lag_7"] = df["gold_price"].shift(7)
+        df["gold_price_lag_14"] = df["gold_price"].shift(14)
+        df["usd_idr_lag_1"] = df["usd_idr"].shift(1)
+        df["usd_idr_lag_7"] = df["usd_idr"].shift(7)
 
         # Calculate moving averages
-        df['gold_price_ma_7'] = df['gold_price'].rolling(window=7, min_periods=1).mean()
-        df['gold_price_ma_14'] = df['gold_price'].rolling(window=14, min_periods=1).mean()
-        df['gold_price_ma_30'] = df['gold_price'].rolling(window=30, min_periods=1).mean()
-        df['usd_idr_ma_7'] = df['usd_idr'].rolling(window=7, min_periods=1).mean()
+        df["gold_price_ma_7"] = df["gold_price"].rolling(window=7, min_periods=1).mean()
+        df["gold_price_ma_14"] = (
+            df["gold_price"].rolling(window=14, min_periods=1).mean()
+        )
+        df["gold_price_ma_30"] = (
+            df["gold_price"].rolling(window=30, min_periods=1).mean()
+        )
+        df["usd_idr_ma_7"] = df["usd_idr"].rolling(window=7, min_periods=1).mean()
 
         # Calculate standard deviations
-        df['gold_price_std_7'] = df['gold_price'].rolling(window=7, min_periods=1).std().fillna(0)
-        df['gold_price_std_14'] = df['gold_price'].rolling(window=14, min_periods=1).std().fillna(0)
-        df['usd_idr_std_7'] = df['usd_idr'].rolling(window=7, min_periods=1).std().fillna(0)
+        df["gold_price_std_7"] = (
+            df["gold_price"].rolling(window=7, min_periods=1).std().fillna(0)
+        )
+        df["gold_price_std_14"] = (
+            df["gold_price"].rolling(window=14, min_periods=1).std().fillna(0)
+        )
+        df["usd_idr_std_7"] = (
+            df["usd_idr"].rolling(window=7, min_periods=1).std().fillna(0)
+        )
 
         # Calculate percentage changes
-        df['gold_price_pct_1'] = df['gold_price'].pct_change(1).fillna(0)
-        df['gold_price_pct_7'] = df['gold_price'].pct_change(7).fillna(0)
-        df['usd_idr_pct_1'] = df['usd_idr'].pct_change(1).fillna(0)
-        df['usd_idr_pct_7'] = df['usd_idr'].pct_change(7).fillna(0)
+        df["gold_price_pct_1"] = df["gold_price"].pct_change(1).fillna(0)
+        df["gold_price_pct_7"] = df["gold_price"].pct_change(7).fillna(0)
+        df["usd_idr_pct_1"] = df["usd_idr"].pct_change(1).fillna(0)
+        df["usd_idr_pct_7"] = df["usd_idr"].pct_change(7).fillna(0)
 
         # Fill NaN values from rolling calculations with forward fill then backward fill
         df = df.ffill(limit=30).bfill()
@@ -336,7 +395,9 @@ class GoldPredictor:
         df = self._engineer_features(data)
 
         # Extract only the feature columns expected by the model
-        feature_cols = self.feature_names if self.feature_names else DEFAULT_FEATURE_NAMES
+        feature_cols = (
+            self.feature_names if self.feature_names else DEFAULT_FEATURE_NAMES
+        )
 
         for feature in feature_cols:
             if feature not in df.columns:
@@ -346,7 +407,9 @@ class GoldPredictor:
         feature_matrix = df[feature_cols].values
         return df, feature_matrix
 
-    def _generate_recursive_forecast(self, seed_data, days, exogenous_future=None, enable_logging=True):
+    def _generate_recursive_forecast(
+        self, seed_data, days, exogenous_future=None, enable_logging=True
+    ):
         """Generate recursive forecasts from seed data with optional known future exogenous values."""
         working_data = seed_data.copy()
 
@@ -357,12 +420,16 @@ class GoldPredictor:
             future = exogenous_future.copy().reset_index(drop=True)
             for feature in EXOGENOUS_FEATURES:
                 if feature in future.columns:
-                    future[feature] = pd.to_numeric(future[feature], errors='coerce').ffill().bfill()
+                    future[feature] = (
+                        pd.to_numeric(future[feature], errors="coerce").ffill().bfill()
+                    )
 
             override_steps = min(days, len(future))
             for feature in EXOGENOUS_FEATURES:
                 if feature in future.columns:
-                    exog_projection.loc[:override_steps - 1, feature] = future[feature].iloc[:override_steps].values
+                    exog_projection.loc[: override_steps - 1, feature] = (
+                        future[feature].iloc[:override_steps].values
+                    )
 
         _, features_X = self._prepare_features(working_data)
         scaled_features = self.scaler_X.transform(features_X)
@@ -372,83 +439,125 @@ class GoldPredictor:
                 f"Insufficient sequence length for model input: {len(scaled_features)} < {self.sequence_length}"
             )
 
-        current_input = scaled_features[-self.sequence_length:].copy()
+        current_input = scaled_features[-self.sequence_length :].copy()
         predictions = []
 
         for step in range(days):
-            input_reshaped = current_input.reshape(1, self.sequence_length, current_input.shape[1])
+            input_reshaped = current_input.reshape(
+                1, self.sequence_length, current_input.shape[1]
+            )
             next_pred_scaled = self.model.predict(input_reshaped, verbose=0)[0, 0]
-            next_pred = self.scaler_y.inverse_transform(np.array([[next_pred_scaled]]))[0, 0]
+            next_pred = self.scaler_y.inverse_transform(np.array([[next_pred_scaled]]))[
+                0, 0
+            ]
 
-            next_pred = self._clip_price_prediction(next_pred, observed_prices=working_data['gold_price'])
+            next_pred = self._clip_price_prediction(
+                next_pred, observed_prices=working_data["gold_price"]
+            )
             predictions.append(next_pred)
 
-            last_date = pd.to_datetime(working_data['date'].iloc[-1])
+            last_date = pd.to_datetime(working_data["date"].iloc[-1])
             next_date = last_date + pd.Timedelta(days=1)
 
-            new_row = pd.DataFrame({
-                'date': [next_date.strftime('%Y-%m-%d')],
-                'gold_price': [next_pred],
-                'usd_idr': [float(exog_projection['usd_idr'].iloc[step])],
-                'inflation': [float(exog_projection['inflation'].iloc[step])],
-                'interest_rate': [float(exog_projection['interest_rate'].iloc[step])],
-            })
+            new_row = pd.DataFrame(
+                {
+                    "date": [next_date.strftime("%Y-%m-%d")],
+                    "gold_price": [next_pred],
+                    "usd_idr": [float(exog_projection["usd_idr"].iloc[step])],
+                    "inflation": [float(exog_projection["inflation"].iloc[step])],
+                    "interest_rate": [
+                        float(exog_projection["interest_rate"].iloc[step])
+                    ],
+                }
+            )
 
             working_data = pd.concat([working_data, new_row], ignore_index=True)
             _, next_features_X = self._prepare_features(working_data)
             next_scaled_features = self.scaler_X.transform(next_features_X)
-            current_input = next_scaled_features[-self.sequence_length:]
+            current_input = next_scaled_features[-self.sequence_length :]
 
             if enable_logging and step in (0, 6, 29, 89):
                 logger.info(
                     "Forecast step=%s price=%.2f usd_idr=%.4f inflation=%.6f interest_rate=%.6f",
                     step + 1,
                     float(next_pred),
-                    float(new_row['usd_idr'].iloc[0]),
-                    float(new_row['inflation'].iloc[0]),
-                    float(new_row['interest_rate'].iloc[0]),
+                    float(new_row["usd_idr"].iloc[0]),
+                    float(new_row["inflation"].iloc[0]),
+                    float(new_row["interest_rate"].iloc[0]),
                 )
 
         preds = np.array(predictions, dtype=float)
-        return self._calibrate_prediction_path(preds, seed_data['gold_price'])
+        return self._calibrate_prediction_path(preds, seed_data["gold_price"])
 
     def _estimate_metrics_for_request(self, data, days):
         """Estimate RMSE/MAE/MAPE/Confidence from rolling backtest on user-provided dataset."""
         try:
             total_rows = len(data)
+            if total_rows == 0:
+                return self._default_metrics()
+
+            latest_date = (
+                str(data["date"].iloc[-1])
+                if "date" in data.columns
+                else str(total_rows)
+            )
+            cache_key = (total_rows, latest_date, int(days))
+            cached_metrics = self._metrics_cache.get(cache_key)
+            if cached_metrics is not None:
+                return cached_metrics
+
+            # Large histories make the rolling backtest too slow for an interactive
+            # request, so fall back to the baseline metrics for responsiveness.
+            if total_rows > 1500:
+                metrics = self._default_metrics()
+                self._metrics_cache[cache_key] = metrics
+                return metrics
+
             minimum_rows = self.sequence_length + days + 40
             if total_rows < minimum_rows:
                 return self._default_metrics()
 
-            latest_anchor = total_rows - days - 1
+            # Use only a recent slice so the estimate remains representative while
+            # avoiding a full reprocess of the entire uploaded history.
+            working = data.tail(min(total_rows, 365)).copy()
+
+            latest_anchor = len(working) - days - 1
             if latest_anchor <= self.sequence_length:
                 return self._default_metrics()
 
             if days <= 14:
-                max_anchors = 8
+                max_anchors = 3
             elif days <= 30:
-                max_anchors = 6
+                max_anchors = 3
             else:
-                max_anchors = 4
+                max_anchors = 2
 
-            earliest_anchor = max(self.sequence_length + 30, latest_anchor - (max_anchors - 1) * 14)
+            earliest_anchor = max(
+                self.sequence_length + 30, latest_anchor - (max_anchors - 1) * 14
+            )
             if earliest_anchor > latest_anchor:
-                earliest_anchor = max(self.sequence_length, latest_anchor - (max_anchors - 1))
+                earliest_anchor = max(
+                    self.sequence_length, latest_anchor - (max_anchors - 1)
+                )
 
-            anchors = np.unique(np.linspace(earliest_anchor, latest_anchor, num=max_anchors, dtype=int))
+            anchors = np.unique(
+                np.linspace(earliest_anchor, latest_anchor, num=max_anchors, dtype=int)
+            )
 
             actual_batches = []
             pred_batches = []
 
             for anchor in anchors:
-                seed = data.iloc[:anchor + 1].copy()
-                future = data.iloc[anchor + 1: anchor + 1 + days].copy()
+                seed = working.iloc[: anchor + 1].copy()
+                future = working.iloc[anchor + 1 : anchor + 1 + days].copy()
                 if len(future) < days:
                     continue
 
-                future_exog = future[list(EXOGENOUS_FEATURES)].copy() if all(
-                    feature in future.columns for feature in EXOGENOUS_FEATURES
-                ) else None
+                future_exog = (
+                    future[list(EXOGENOUS_FEATURES)].copy()
+                    if all(feature in future.columns for feature in EXOGENOUS_FEATURES)
+                    else None
+                )
 
                 forecast = self._generate_recursive_forecast(
                     seed_data=seed,
@@ -457,13 +566,17 @@ class GoldPredictor:
                     enable_logging=False,
                 )
 
-                actual = pd.to_numeric(future['gold_price'], errors='coerce').values.astype(float)
+                actual = pd.to_numeric(
+                    future["gold_price"], errors="coerce"
+                ).values.astype(float)
                 if len(forecast) == len(actual) and len(actual) > 0:
                     pred_batches.append(forecast)
                     actual_batches.append(actual)
 
             if not pred_batches:
-                return self._default_metrics()
+                metrics = self._default_metrics()
+                self._metrics_cache[cache_key] = metrics
+                return metrics
 
             preds_arr = np.concatenate(pred_batches)
             actuals_arr = np.concatenate(actual_batches)
@@ -475,7 +588,11 @@ class GoldPredictor:
             denom = np.maximum(np.abs(actuals_arr), eps)
             mape = np.mean(np.abs((actuals_arr - preds_arr) / denom)) * 100.0
 
-            prices = pd.to_numeric(data['gold_price'], errors='coerce').dropna().values.astype(float)
+            prices = (
+                pd.to_numeric(working["gold_price"], errors="coerce")
+                .dropna()
+                .values.astype(float)
+            )
             price_range = float(prices.max() - prices.min()) if len(prices) > 0 else 0.0
 
             rmse_normalized = rmse / price_range if price_range > 0 else rmse
@@ -484,16 +601,18 @@ class GoldPredictor:
             horizon_penalty = (np.log1p(days) / np.log1p(90)) * 8.0
             confidence = float(np.clip(100.0 - mape - horizon_penalty, 5.0, 99.0))
 
-            return {
-                'rmse': round(float(rmse_normalized), 4),
-                'mae': round(float(mae_normalized), 4),
-                'mape': round(float(mape), 2),
-                'confidence_score': round(float(confidence), 1),
-                'metric_mode': 'rolling_backtest_estimate',
-                'evaluation_samples': int(len(actuals_arr)),
-                'evaluation_anchors': int(len(pred_batches)),
-                'evaluation_horizon_days': int(days),
+            metrics = {
+                "rmse": round(float(rmse_normalized), 4),
+                "mae": round(float(mae_normalized), 4),
+                "mape": round(float(mape), 2),
+                "confidence_score": round(float(confidence), 1),
+                "metric_mode": "rolling_backtest_estimate",
+                "evaluation_samples": int(len(actuals_arr)),
+                "evaluation_anchors": int(len(pred_batches)),
+                "evaluation_horizon_days": int(days),
             }
+            self._metrics_cache[cache_key] = metrics
+            return metrics
         except Exception as e:
             logger.error(f"Dynamic metrics estimation error: {e}", exc_info=True)
             return self._default_metrics()
@@ -529,10 +648,10 @@ class GoldPredictor:
             chart_data = self._build_chart_data(data, predictions, days)
 
             return {
-                'success': True,
-                'predictions': predictions.tolist(),
-                'chart_data': chart_data,
-                'metrics': metrics,
+                "success": True,
+                "predictions": predictions.tolist(),
+                "chart_data": chart_data,
+                "metrics": metrics,
             }
 
         except Exception as e:
@@ -542,7 +661,7 @@ class GoldPredictor:
     def _calculate_metrics(self, data):
         """Calculate model performance metrics on a validation split."""
         try:
-            prices = data['gold_price'].values.astype(float)
+            prices = data["gold_price"].values.astype(float)
 
             # Prepare engineered features
             eng_data, features_X = self._prepare_features(data)
@@ -563,7 +682,7 @@ class GoldPredictor:
             preds = []
 
             for i in range(self.sequence_length, len(scaled_test_features)):
-                seq = scaled_test_features[i - self.sequence_length:i]
+                seq = scaled_test_features[i - self.sequence_length : i]
                 seq_reshaped = seq.reshape(1, self.sequence_length, seq.shape[1])
                 pred_scaled = self.model.predict(seq_reshaped, verbose=0)[0, 0]
 
@@ -595,10 +714,10 @@ class GoldPredictor:
             confidence = min(100 - mape, 99.0)
 
             return {
-                'rmse': round(float(rmse_normalized), 4),
-                'mae': round(float(mae_normalized), 4),
-                'mape': round(float(mape), 2),
-                'confidence_score': round(float(confidence), 1),
+                "rmse": round(float(rmse_normalized), 4),
+                "mae": round(float(mae_normalized), 4),
+                "mape": round(float(mape), 2),
+                "confidence_score": round(float(confidence), 1),
             }
 
         except Exception as e:
@@ -607,10 +726,10 @@ class GoldPredictor:
 
     def _default_metrics(self):
         return {
-            'rmse': 0.0421,
-            'mae': 0.0385,
-            'mape': 1.2,
-            'confidence_score': 94.8,
+            "rmse": 0.0421,
+            "mae": 0.0385,
+            "mape": 1.2,
+            "confidence_score": 94.8,
         }
 
     def _build_chart_data(self, data, predictions, days):
@@ -620,54 +739,62 @@ class GoldPredictor:
         # Last 60 actual data points
         recent = data.tail(60)
         for _, row in recent.iterrows():
-            chart_data.append({
-                'date': str(row['date']),
-                'actual': float(row['gold_price']),
-                'predicted': None,
-            })
+            chart_data.append(
+                {
+                    "date": str(row["date"]),
+                    "actual": float(row["gold_price"]),
+                    "predicted": None,
+                }
+            )
 
         # Predicted data points
-        last_date = pd.to_datetime(data['date'].iloc[-1])
+        last_date = pd.to_datetime(data["date"].iloc[-1])
         for i, pred in enumerate(predictions):
             future_date = last_date + pd.Timedelta(days=i + 1)
-            chart_data.append({
-                'date': future_date.strftime('%Y-%m-%d'),
-                'actual': None,
-                'predicted': round(float(pred)),
-            })
+            chart_data.append(
+                {
+                    "date": future_date.strftime("%Y-%m-%d"),
+                    "actual": None,
+                    "predicted": round(float(pred)),
+                }
+            )
 
         return chart_data
 
     def _fallback_predict(self, data, days):
         """Fallback: use last known price as naive forecast."""
-        last_price = float(data['gold_price'].iloc[-1])
-        last_date = pd.to_datetime(data['date'].iloc[-1])
+        last_price = float(data["gold_price"].iloc[-1])
+        last_date = pd.to_datetime(data["date"].iloc[-1])
 
         predictions = [last_price] * days
         chart_data = []
 
         recent = data.tail(60)
         for _, row in recent.iterrows():
-            chart_data.append({
-                'date': str(row['date']),
-                'actual': float(row['gold_price']),
-                'predicted': None,
-            })
+            chart_data.append(
+                {
+                    "date": str(row["date"]),
+                    "actual": float(row["gold_price"]),
+                    "predicted": None,
+                }
+            )
 
         for i in range(days):
             future_date = last_date + pd.Timedelta(days=i + 1)
-            chart_data.append({
-                'date': future_date.strftime('%Y-%m-%d'),
-                'actual': None,
-                'predicted': last_price,
-            })
+            chart_data.append(
+                {
+                    "date": future_date.strftime("%Y-%m-%d"),
+                    "actual": None,
+                    "predicted": last_price,
+                }
+            )
 
         return {
-            'success': True,
-            'predictions': predictions,
-            'chart_data': chart_data,
-            'metrics': self._default_metrics(),
-            'fallback': True,
+            "success": True,
+            "predictions": predictions,
+            "chart_data": chart_data,
+            "metrics": self._default_metrics(),
+            "fallback": True,
         }
 
 
