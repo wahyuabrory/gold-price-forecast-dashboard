@@ -1,10 +1,11 @@
+import React from 'react';
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import {
-  Upload, Database, Sparkles, Download, TrendingDown, CheckCircle, BarChart3, ShieldCheck, X
+  Upload, Database, Sparkles, Download, TrendingDown, CheckCircle, BarChart3, ShieldCheck, X, FileSpreadsheet, CircleAlert, Info
 } from 'lucide-react';
 import { uploadCSV, loadSampleData, generatePrediction, exportPredictions } from '../services/api';
 import { formatRupiah, formatChartDate } from '../utils/formatters';
@@ -29,6 +30,104 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 let PredictCache = null;
+const Motion = motion;
+
+const REQUIRED_DATE_ALIASES = ['date', 'tanggal', 'dates'];
+const REQUIRED_PRICE_ALIASES = ['gold_price', 'close', 'price', 'harga', 'close_price'];
+const OPTIONAL_COLUMNS = ['usd_idr', 'inflation', 'interest_rate'];
+
+const OPTIONAL_COLUMN_MATCHERS = {
+  usd_idr: (header) => header.includes('usd') || header.includes('idr'),
+  inflation: (header) => header.includes('inflation'),
+  interest_rate: (header) => header.includes('interest') || header.includes('rate'),
+};
+
+const SAMPLE_CSV_PREVIEW = [
+  'date,gold_price,usd_idr,inflation,interest_rate',
+  '2015-01-01,549000,12385,0.0696,0.0775',
+  '2015-01-02,550000,12400,0.0700,0.0775',
+  '2015-01-03,548500,12395,0.0705,0.0775',
+];
+
+const normalizeCsvHeader = (value = '') => value.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+
+const parseCsvHeaders = (headerLine = '') => {
+  return headerLine
+    .split(',')
+    .map((token) => normalizeCsvHeader(token.replace(/^"|"$/g, '')))
+    .filter(Boolean);
+};
+
+const readTextFromFile = async (file) => {
+  if (file && typeof file.text === 'function') {
+    return file.text();
+  }
+
+  if (file && typeof file.arrayBuffer === 'function') {
+    const buffer = await file.arrayBuffer();
+    return new TextDecoder().decode(buffer);
+  }
+
+  if (typeof FileReader !== 'undefined') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.onerror = () => reject(reader.error || new Error('Gagal membaca file.'));
+      reader.readAsText(file);
+    });
+  }
+
+  throw new Error('Browser tidak mendukung pembacaan file teks.');
+};
+
+const runClientCsvPrecheck = async (file) => {
+  if (!file) {
+    return { ok: false, message: 'File belum dipilih.' };
+  }
+
+  if (!file.name.toLowerCase().endsWith('.csv')) {
+    return { ok: false, message: 'File harus berformat .csv.' };
+  }
+
+  const text = await readTextFromFile(file);
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+
+  if (lines.length < 2) {
+    return { ok: false, message: 'CSV kosong atau tidak memiliki baris data.' };
+  }
+
+  const headers = parseCsvHeaders(lines[0]);
+  const hasDateColumn = headers.some((header) => REQUIRED_DATE_ALIASES.includes(header));
+  const hasPriceColumn = headers.some((header) => REQUIRED_PRICE_ALIASES.includes(header));
+
+  if (!hasDateColumn || !hasPriceColumn) {
+    const missing = [];
+    if (!hasDateColumn) missing.push('date/tanggal');
+    if (!hasPriceColumn) missing.push('gold_price/harga');
+    return {
+      ok: false,
+      message: `Kolom wajib tidak ditemukan: ${missing.join(', ')}.`,
+    };
+  }
+
+  const rowCount = lines.length - 1;
+  if (rowCount < 60) {
+    return {
+      ok: false,
+      message: `Dataset minimal 60 baris data. File ini hanya ${rowCount} baris.`,
+    };
+  }
+
+  const missingOptional = OPTIONAL_COLUMNS.filter(
+    (column) => !headers.some((header) => OPTIONAL_COLUMN_MATCHERS[column](header))
+  );
+
+  return {
+    ok: true,
+    rowCount,
+    missingOptional,
+  };
+};
 
 export default function Predict() {
   const [dataSource, setDataSource] = useState(PredictCache?.dataSource || 'csv');
@@ -39,7 +138,11 @@ export default function Predict() {
   const [isLoading, setIsLoading] = useState(false);
   const [isPredicting, setIsPredicting] = useState(false);
   const [fileName, setFileName] = useState(PredictCache?.fileName || '');
-  const [dragActive, setDragActive] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [modalDragActive, setModalDragActive] = useState(false);
+  const [isPrechecking, setIsPrechecking] = useState(false);
+  const [uploadNotice, setUploadNotice] = useState(null);
+  const [precheckSummary, setPrecheckSummary] = useState(null);
   const [ripples, setRipples] = useState([]);
 
   useEffect(() => {
@@ -55,26 +158,113 @@ export default function Predict() {
     setRipples((prev) => [...prev, { x, y, id: Date.now() }]);
   }, []);
 
+  const closeUploadModal = useCallback(() => {
+    if (isLoading || isPrechecking) return;
+    setIsUploadModalOpen(false);
+    setModalDragActive(false);
+  }, [isLoading, isPrechecking]);
+
+  const openUploadModal = useCallback(() => {
+    setDataSource('csv');
+    setUploadNotice(null);
+    setPrecheckSummary(null);
+    setModalDragActive(false);
+    setIsUploadModalOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isUploadModalOpen) return undefined;
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        closeUploadModal();
+      }
+    };
+
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isUploadModalOpen, closeUploadModal]);
+
   const handleFileUpload = useCallback(async (file) => {
     if (!file) return;
     try {
       setIsLoading(true);
-      setFileName(file.name);
       const result = await uploadCSV(file);
       if (result.success) {
+        setDataSource('csv');
+        setFileName(file.name);
         setDataLoaded(true);
+        return { success: true };
       }
+      const message = result?.error || 'Gagal mengupload file. Pastikan format CSV benar.';
+      alert(message);
+      return { success: false, error: message };
     } catch (err) {
       console.error('Upload error:', err);
-      alert('Gagal mengupload file. Pastikan format CSV benar.');
+      const serverMessage = err?.response?.data?.error;
+      const message = serverMessage || 'Gagal mengupload file. Pastikan format CSV benar.';
+      alert(message);
+      return { success: false, error: message };
     } finally {
       setIsLoading(false);
     }
   }, []);
 
+  const processSelectedFile = useCallback(async (file) => {
+    if (!file) return;
+
+    setUploadNotice({ type: 'info', message: 'Memeriksa format dataset...' });
+    setPrecheckSummary(null);
+    setIsPrechecking(true);
+
+    try {
+      const precheck = await runClientCsvPrecheck(file);
+      if (!precheck.ok) {
+        setUploadNotice({ type: 'error', message: precheck.message });
+        return;
+      }
+
+      setPrecheckSummary(precheck);
+
+      const optionalMessage = precheck.missingOptional.length > 0
+        ? `Kolom opsional belum ditemukan: ${precheck.missingOptional.join(', ')} (akan diisi default oleh sistem).`
+        : 'Semua kolom opsional terdeteksi.';
+
+      setUploadNotice({
+        type: 'info',
+        message: `Validasi awal lolos (${precheck.rowCount} baris). ${optionalMessage}`,
+      });
+
+      const uploadResult = await handleFileUpload(file);
+      if (uploadResult?.success) {
+        setUploadNotice({ type: 'success', message: `${file.name} berhasil diupload.` });
+        setIsUploadModalOpen(false);
+      } else {
+        setUploadNotice({
+          type: 'error',
+          message: uploadResult?.error || 'Upload gagal. Silakan cek format dataset Anda.',
+        });
+      }
+    } catch (error) {
+      console.error('Pre-check error:', error);
+      setUploadNotice({
+        type: 'error',
+        message: 'Gagal melakukan validasi awal file. Coba file lain.',
+      });
+    } finally {
+      setIsPrechecking(false);
+    }
+  }, [handleFileUpload]);
+
   const handleSampleData = useCallback(async () => {
     try {
       setIsLoading(true);
+      setIsUploadModalOpen(false);
       setDataSource('sample');
       const result = await loadSampleData();
       if (result.success) {
@@ -118,25 +308,42 @@ export default function Predict() {
     }
   }, []);
 
-  const handleDrag = (e) => {
+  const handleModalDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true);
-    else if (e.type === 'dragleave') setDragActive(false);
+    if (e.type === 'dragenter' || e.type === 'dragover') setModalDragActive(true);
+    else if (e.type === 'dragleave') setModalDragActive(false);
   };
 
-  const handleDrop = (e) => {
+  const handleModalDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragActive(false);
+    setModalDragActive(false);
     if (e.dataTransfer.files?.[0]) {
-      setDataSource('csv');
-      handleFileUpload(e.dataTransfer.files[0]);
+      processSelectedFile(e.dataTransfer.files[0]);
     }
   };
 
+  const modalNoticeClassName = uploadNotice?.type === 'error'
+    ? 'border-rose-200 bg-rose-50/80 text-rose-700 dark:border-rose-800/60 dark:bg-rose-900/20 dark:text-rose-200'
+    : uploadNotice?.type === 'success'
+      ? 'border-emerald-200 bg-emerald-50/80 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-200'
+      : 'border-primary/30 bg-primary/10 text-amber-700 dark:border-primary/40 dark:bg-primary/20 dark:text-amber-200';
+
   return (
     <div className="p-8">
+      <input
+        data-testid="csv-upload-input"
+        type="file"
+        accept=".csv"
+        className="sr-only"
+        onChange={(e) => {
+          setDataSource('csv');
+          handleFileUpload(e.target.files?.[0]);
+          e.target.value = '';
+        }}
+      />
+
       {/* Header */}
       <header className="flex justify-between items-center mb-8">
         <div>
@@ -151,7 +358,7 @@ export default function Predict() {
               <CheckCircle className="w-4 h-4 text-emerald-500" />
               <span className="font-medium truncate max-w-[200px]">{fileName}</span>
             </div>
-            <button 
+            <button
               onClick={() => {
                 PredictCache = null;
                 setDataSource('csv');
@@ -183,29 +390,19 @@ export default function Predict() {
           </p>
           <div className="grid grid-cols-2 gap-4">
             {/* CSV Upload */}
-            <label
+            <button
+              type="button"
+              onClick={openUploadModal}
               className={`relative flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-xl cursor-pointer transition group ${
                 dataSource === 'csv'
                   ? 'border-primary bg-primary/5'
                   : 'border-slate-200 dark:border-slate-700 hover:border-primary/30 hover:bg-primary/5'
-              } ${dragActive ? 'border-primary bg-primary/10' : ''}`}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
+              }`}
             >
-              <input
-                type="file"
-                accept=".csv"
-                className="sr-only"
-                onChange={(e) => {
-                  setDataSource('csv');
-                  handleFileUpload(e.target.files[0]);
-                }}
-              />
               <Upload className={`w-8 h-8 mb-3 transition ${dataSource === 'csv' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`} />
               <span className="text-sm font-medium">Dataset CSV</span>
-            </label>
+              <span className="text-xs text-slate-500 dark:text-slate-400 mt-1 text-center">Klik untuk buka popup upload</span>
+            </button>
 
             {/* Sample Data */}
             <button
@@ -249,7 +446,7 @@ export default function Predict() {
               </div>
             </div>
           </div>
-          <motion.button
+          <Motion.button
             whileTap={(!dataLoaded || isPredicting) ? undefined : { scale: 0.98 }}
             onPointerDown={(!dataLoaded || isPredicting) ? undefined : handlePointerDown}
             onClick={handleGeneratePredictions}
@@ -261,7 +458,7 @@ export default function Predict() {
 
             {/* Glowing inner pulse - warm amber */}
             {isPredicting && (
-                <motion.div 
+                <Motion.div
                     className="absolute inset-0 bg-gradient-to-tr from-amber-600/0 via-amber-400/60 to-yellow-300/0 mix-blend-overlay pointer-events-none z-10"
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: [0, 1, 0], scale: [0.95, 1.05, 0.95] }}
@@ -272,7 +469,7 @@ export default function Predict() {
             {/* Continuous Flowing Gold Gradient Border (Active) */}
             {isPredicting && (
                  <div className="absolute inset-[-150%] pointer-events-none z-0">
-                    <motion.div
+                    <Motion.div
                        animate={{ rotate: 360 }}
                        transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
                        className="w-full h-full bg-[conic-gradient(from_0deg,transparent_0%,transparent_70%,rgba(255,215,0,1)_100%)] origin-center opacity-80"
@@ -287,7 +484,7 @@ export default function Predict() {
             <div className="absolute inset-0 z-20 overflow-hidden pointer-events-none rounded-xl">
               <AnimatePresence>
                 {ripples.map((rip) => (
-                  <motion.span
+                  <Motion.span
                     key={rip.id}
                     initial={{ scale: 0, opacity: 0.6 }}
                     animate={{ scale: 4, opacity: 0 }}
@@ -302,7 +499,7 @@ export default function Predict() {
             </div>
 
             {/* Content */}
-            <motion.div 
+            <Motion.div
                layout
                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                className={`relative z-30 flex items-center gap-2 ${(!dataLoaded && !isPredicting) ? 'text-slate-400' : 'text-white'}`}
@@ -318,8 +515,8 @@ export default function Predict() {
                   <span className="tracking-wide">Generate Prediction</span>
                 </>
               )}
-            </motion.div>
-          </motion.button>
+            </Motion.div>
+          </Motion.button>
         </div>
       </div>
 
@@ -328,27 +525,27 @@ export default function Predict() {
         {/* Glassmorphism Loader Banner Overlay */}
         <AnimatePresence>
           {isPredicting && (
-            <motion.div
+            <Motion.div
               initial={{ opacity: 0, backdropFilter: 'blur(0px)' }}
               animate={{ opacity: 1, backdropFilter: 'blur(8px)' }}
               exit={{ opacity: 0, backdropFilter: 'blur(0px)' }}
               className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/30 dark:bg-slate-900/40 border border-white/20 dark:border-slate-700/20"
             >
-              <motion.div 
+              <Motion.div
                 initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.9, y: 20 }}
                 className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-md px-8 py-6 rounded-2xl shadow-xl border border-white/50 dark:border-slate-700/50 flex flex-col items-center max-w-sm text-center"
               >
-                <motion.div 
+                <Motion.div
                   animate={{ rotate: 360 }}
                   transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
                   className="w-14 h-14 rounded-full border-t-2 border-r-2 border-primary mb-4"
                 />
                 <h3 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-amber-600 mb-2">Mengolah Prediksi...</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400">Deep learning model GRU sedang mensintesis pola historis untuk proyeksi harga.</p>
-              </motion.div>
-            </motion.div>
+              </Motion.div>
+            </Motion.div>
           )}
         </AnimatePresence>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
@@ -435,7 +632,7 @@ export default function Predict() {
       {/* Bottom Grid: Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {/* Card 1 */}
-        <motion.div 
+        <Motion.div
           animate={isPredicting ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
           transition={{ duration: 2, repeat: isPredicting ? Infinity : 0, ease: 'easeInOut' }}
           className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredicting ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
@@ -448,16 +645,16 @@ export default function Predict() {
             <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Prediksi Hari ke-{predDays}</p>
             <h3 className="text-2xl font-bold mt-1">
               {isPredicting ? (
-                  <motion.div className="h-8 w-2/3 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
+                  <Motion.div className="h-8 w-2/3 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
               ) : (
                   chartData.length > 0 ? formatRupiah(chartData[chartData.length - 1].predicted) : '—'
               )}
             </h3>
           </div>
-        </motion.div>
+        </Motion.div>
 
         {/* Card 2 */}
-        <motion.div 
+        <Motion.div
           animate={isPredicting ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
           transition={{ duration: 2, delay: 0.2, repeat: isPredicting ? Infinity : 0, ease: 'easeInOut' }}
           className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredicting ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
@@ -470,16 +667,16 @@ export default function Predict() {
             <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Konfiden Skor</p>
             <h3 className="text-2xl font-bold mt-1">
               {isPredicting ? (
-                  <motion.div className="h-8 w-1/2 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
+                  <Motion.div className="h-8 w-1/2 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
               ) : (
                   metrics ? `${metrics.confidence_score?.toFixed(1)}%` : '—'
               )}
             </h3>
           </div>
-        </motion.div>
+        </Motion.div>
 
         {/* Card 3 */}
-        <motion.div 
+        <Motion.div
           animate={isPredicting ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
           transition={{ duration: 2, delay: 0.4, repeat: isPredicting ? Infinity : 0, ease: 'easeInOut' }}
           className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredicting ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
@@ -492,16 +689,16 @@ export default function Predict() {
             <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Akurasi Model (MAPE)</p>
             <h3 className="text-2xl font-bold mt-1">
               {isPredicting ? (
-                  <motion.div className="h-8 w-1/2 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
+                  <Motion.div className="h-8 w-1/2 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
               ) : (
                   metrics ? `${metrics.mape?.toFixed(1)}%` : '—'
               )}
             </h3>
           </div>
-        </motion.div>
+        </Motion.div>
 
         {/* Card 4 */}
-        <motion.div 
+        <Motion.div
           animate={isPredicting ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
           transition={{ duration: 2, delay: 0.6, repeat: isPredicting ? Infinity : 0, ease: 'easeInOut' }}
           className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredicting ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
@@ -514,14 +711,127 @@ export default function Predict() {
             <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Status Data</p>
             <h3 className="text-2xl font-bold mt-1">
               {isPredicting ? (
-                  <motion.div className="h-8 w-2/3 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
+                  <Motion.div className="h-8 w-2/3 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
               ) : (
                   dataLoaded ? "Tersedia" : "Belum Ada"
               )}
             </h3>
           </div>
-        </motion.div>
+        </Motion.div>
       </div>
+
+      <AnimatePresence>
+        {isUploadModalOpen && (
+          <Motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[90] bg-slate-950/55 backdrop-blur-sm px-4 py-8 overflow-y-auto"
+            onClick={closeUploadModal}
+          >
+            <Motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Upload Dataset CSV"
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="mx-auto w-full max-w-4xl rounded-3xl border border-primary/20 bg-white/95 dark:bg-slate-900/95 shadow-[0_30px_80px_rgba(15,23,42,0.35)] backdrop-blur"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-slate-200/70 dark:border-slate-700/70">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-primary font-semibold mb-2">Data Intake</p>
+                  <h2 className="text-2xl font-serif font-bold text-slate-900 dark:text-white">Upload Dataset Prediksi Emas</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeUploadModal}
+                  disabled={isLoading || isPrechecking}
+                  className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-rose-500 hover:border-rose-200 dark:hover:border-rose-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                  aria-label="Tutup popup upload"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <label
+                    data-testid="upload-dropzone"
+                    className={`relative block rounded-2xl border-2 border-dashed p-6 text-center transition cursor-pointer ${
+                      modalDragActive
+                        ? 'border-primary bg-primary/10'
+                        : 'border-slate-300 dark:border-slate-700 hover:border-primary/40 hover:bg-primary/5'
+                    }`}
+                    onDragEnter={handleModalDrag}
+                    onDragLeave={handleModalDrag}
+                    onDragOver={handleModalDrag}
+                    onDrop={handleModalDrop}
+                  >
+                    <input
+                      data-testid="csv-upload-modal-input"
+                      type="file"
+                      accept=".csv"
+                      className="sr-only"
+                      onChange={(e) => {
+                        processSelectedFile(e.target.files?.[0]);
+                        e.target.value = '';
+                      }}
+                    />
+                    <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 text-primary" />
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Drop file CSV di sini atau klik untuk memilih</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">File akan divalidasi otomatis sebelum dikirim ke server.</p>
+                    {(isLoading || isPrechecking) && (
+                      <p className="text-xs mt-3 text-primary font-medium">Memproses dataset...</p>
+                    )}
+                  </label>
+
+                  {uploadNotice && (
+                    <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${modalNoticeClassName}`}>
+                      {uploadNotice.type === 'error' ? (
+                        <CircleAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                      ) : (
+                        <Info className="w-4 h-4 mt-0.5 shrink-0" />
+                      )}
+                      <span>{uploadNotice.message}</span>
+                    </div>
+                  )}
+
+                  {precheckSummary && (
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/70 px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
+                      <p><span className="font-semibold">Baris data:</span> {precheckSummary.rowCount}</p>
+                      <p><span className="font-semibold">Status:</span> Siap dipakai untuk prediksi (minimum 60 baris terpenuhi).</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
+                    <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-3">Kriteria Dataset CSV</h3>
+                    <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+                      <li className="flex gap-2"><CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5" />Format file wajib <span className="font-semibold">.csv</span></li>
+                      <li className="flex gap-2"><CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5" />Minimal <span className="font-semibold">60 baris data</span></li>
+                      <li className="flex gap-2"><CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5" />Kolom wajib: <span className="font-semibold">date</span> dan <span className="font-semibold">gold_price</span></li>
+                      <li className="flex gap-2"><CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5" />Kolom opsional: <span className="font-semibold">usd_idr, inflation, interest_rate</span></li>
+                      <li className="flex gap-2"><CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5" />Tanggal mendukung format ISO dan gaya Indonesia</li>
+                    </ul>
+                    <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Alias yang diterima backend: <span className="font-semibold">Tanggal</span> untuk tanggal, <span className="font-semibold">Harga</span> untuk harga.</p>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-4">
+                    <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-2">Contoh CSV</h3>
+                    <pre className="text-xs leading-5 text-slate-600 dark:text-slate-300 overflow-x-auto custom-scrollbar">
+{SAMPLE_CSV_PREVIEW.join('\n')}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+            </Motion.div>
+          </Motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

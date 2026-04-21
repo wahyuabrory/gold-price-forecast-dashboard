@@ -1,11 +1,23 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import Predict from '../../pages/Predict';
 import * as api from '../../services/api';
 
 vi.mock('../../services/api');
+
+const createValidCsvFile = (fileName = 'test.csv') => {
+  const rows = Array.from(
+    { length: 60 },
+    (_, index) => `2025-01-${String((index % 28) + 1).padStart(2, '0')},${1000000 + index},15500,0.03,0.05`
+  );
+
+  return new File(
+    [['date,gold_price,usd_idr,inflation,interest_rate', ...rows].join('\n')],
+    fileName,
+    { type: 'text/csv' }
+  );
+};
 
 describe('Predict Page', () => {
   const mockPredictionData = {
@@ -284,7 +296,7 @@ describe('Predict Page', () => {
   });
 
   it('should handle file upload error', async () => {
-    const alertSpy = vi.spyOn(global, 'alert').mockImplementation(() => {});
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     api.uploadCSV.mockRejectedValue(new Error('Upload failed'));
 
     render(<Predict />);
@@ -302,7 +314,7 @@ describe('Predict Page', () => {
   });
 
   it('should handle prediction error', async () => {
-    const alertSpy = vi.spyOn(global, 'alert').mockImplementation(() => {});
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     api.uploadCSV.mockResolvedValue({ success: true });
     api.generatePrediction.mockRejectedValue(new Error('Prediction failed'));
 
@@ -351,8 +363,11 @@ describe('Predict Page', () => {
   it('should handle drag and drop file upload', async () => {
     render(<Predict />);
 
-    const uploadArea = screen.getByText(/Dataset CSV/i).closest('label');
-    const file = new File(['data'], 'test.csv', { type: 'text/csv' });
+    const datasetCard = screen.getByRole('button', { name: /Dataset CSV/i });
+    fireEvent.click(datasetCard);
+
+    const uploadArea = screen.getByTestId('upload-dropzone');
+    const file = createValidCsvFile();
 
     const dataTransfer = {
       files: [file],
@@ -365,6 +380,46 @@ describe('Predict Page', () => {
     await waitFor(() => {
       expect(api.uploadCSV).toHaveBeenCalledWith(file);
     });
+  });
+
+  it('should open upload modal from Dataset CSV card', async () => {
+    render(<Predict />);
+
+    const datasetCard = screen.getByRole('button', { name: /Dataset CSV/i });
+    fireEvent.click(datasetCard);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /Upload Dataset CSV/i })).toBeInTheDocument();
+    });
+  });
+
+  it('should show dataset criteria and sample CSV inside modal', async () => {
+    render(<Predict />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Dataset CSV/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Kriteria Dataset CSV/i)).toBeInTheDocument();
+      expect(screen.getByText(/Minimal/i)).toBeInTheDocument();
+      expect(screen.getByText(/Contoh CSV/i)).toBeInTheDocument();
+    });
+  });
+
+  it('should block non-csv file in modal pre-check', async () => {
+    render(<Predict />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Dataset CSV/i }));
+
+    const modalInput = await screen.findByTestId('csv-upload-modal-input');
+    const invalidFile = new File(['not,csv'], 'dataset.txt', { type: 'text/plain' });
+
+    fireEvent.change(modalInput, { target: { files: [invalidFile] } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/File harus berformat .csv/i)).toBeInTheDocument();
+    });
+
+    expect(api.uploadCSV).not.toHaveBeenCalled();
   });
 
   it('should display reset button after data upload', async () => {

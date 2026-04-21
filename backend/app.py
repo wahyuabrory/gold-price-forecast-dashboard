@@ -66,4 +66,8 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # The debug reloader can become unstable under Anaconda/Windows and restart
+    # the backend while requests are in flight, which shows up as ECONNRESET in
+    # the Vite proxy. Keep the debugger available, but disable the reloader so
+    # the process stays stable during local development.
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
