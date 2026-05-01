@@ -1,12 +1,17 @@
+import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
+import { usePrediction } from '../context/PredictionContext';
 import {
   LayoutDashboard,
   TrendingUp,
   History,
   Sun,
   Moon,
-  CircleDollarSign,
+  Loader2,
+  CircleCheck,
+  CircleAlert,
+  MinusCircle,
 } from 'lucide-react';
 
 const navItems = [
@@ -17,6 +22,38 @@ const navItems = [
 
 export default function Layout() {
   const { isDark, toggleTheme } = useTheme();
+  const { status, jobId } = usePrediction();
+
+  const statusConfig = {
+    idle: {
+      label: 'Prediksi: idle',
+      icon: MinusCircle,
+      className: 'text-slate-500 bg-slate-100 dark:bg-slate-800',
+    },
+    pending: {
+      label: 'Prediksi: pending',
+      icon: Loader2,
+      className: 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30',
+    },
+    running: {
+      label: 'Prediksi: running',
+      icon: Loader2,
+      className: 'text-primary bg-primary/10',
+    },
+    complete: {
+      label: 'Prediksi: complete',
+      icon: CircleCheck,
+      className: 'text-emerald-600 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30',
+    },
+    failed: {
+      label: 'Prediksi: failed',
+      icon: CircleAlert,
+      className: 'text-rose-600 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/30',
+    },
+  };
+
+  const activeStatus = statusConfig[status] || statusConfig.idle;
+  const StatusIcon = activeStatus.icon;
 
   return (
     <div className={`min-h-screen flex ${isDark ? 'dark' : ''}`}>
@@ -27,6 +64,16 @@ export default function Layout() {
           <span className="text-3xl tracking-wide font-serif font-bold text-charcoal dark:text-primary">
             XAU/IDR 🪙
           </span>
+        </div>
+
+        <div className="px-4 mb-3">
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold ${activeStatus.className}`}>
+            <StatusIcon className={`w-4 h-4 ${status === 'pending' || status === 'running' ? 'animate-spin' : ''}`} />
+            <span>{activeStatus.label}</span>
+          </div>
+          {jobId && (
+            <p className="mt-1 text-[10px] text-slate-400 truncate" title={jobId}>job: {jobId}</p>
+          )}
         </div>
 
         {/* Navigation */}

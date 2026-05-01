@@ -8,6 +8,7 @@ import {
   Upload, Database, Sparkles, Download, TrendingDown, CheckCircle, BarChart3, ShieldCheck, X, FileSpreadsheet, CircleAlert, Info
 } from 'lucide-react';
 import { uploadCSV, loadSampleData, generatePrediction, exportPredictions } from '../services/api';
+import { usePrediction } from '../context/PredictionContext';
 import { formatRupiah, formatChartDate } from '../utils/formatters';
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -130,13 +131,26 @@ const runClientCsvPrecheck = async (file) => {
 };
 
 export default function Predict() {
+  const {
+    status: predictionStatus,
+    result: predictionResult,
+    error: predictionError,
+    isActive: isContextPredictionActive,
+    startPrediction,
+    resetPrediction,
+  } = usePrediction();
+
   const [dataSource, setDataSource] = useState(PredictCache?.dataSource || 'csv');
   const [predDays, setPredDays] = useState(PredictCache?.predDays || 30);
   const [dataLoaded, setDataLoaded] = useState(PredictCache?.dataLoaded || false);
-  const [chartData, setChartData] = useState(PredictCache?.chartData || []);
-  const [metrics, setMetrics] = useState(PredictCache?.metrics || null);
+  const [chartData, setChartData] = useState(
+    PredictCache?.chartData || predictionResult?.chart_data || []
+  );
+  const [metrics, setMetrics] = useState(
+    PredictCache?.metrics || predictionResult?.metrics || null
+  );
   const [isLoading, setIsLoading] = useState(false);
-  const [isPredicting, setIsPredicting] = useState(false);
+  const [isLegacyPredicting, setIsLegacyPredicting] = useState(false);
   const [fileName, setFileName] = useState(PredictCache?.fileName || '');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [modalDragActive, setModalDragActive] = useState(false);
@@ -145,11 +159,28 @@ export default function Predict() {
   const [precheckSummary, setPrecheckSummary] = useState(null);
   const [ripples, setRipples] = useState([]);
 
+  const isPredictionActive = isContextPredictionActive || isLegacyPredicting;
+
   useEffect(() => {
     PredictCache = {
       dataSource, predDays, dataLoaded, chartData, metrics, fileName
     };
   }, [dataSource, predDays, dataLoaded, chartData, metrics, fileName]);
+
+  useEffect(() => {
+    if (!predictionResult?.success) {
+      return;
+    }
+
+    setChartData(predictionResult.chart_data || []);
+    setMetrics(predictionResult.metrics || null);
+  }, [predictionResult]);
+
+  useEffect(() => {
+    if (predictionStatus === 'failed' && predictionError) {
+      alert(predictionError);
+    }
+  }, [predictionStatus, predictionError]);
 
   const handlePointerDown = useCallback((e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -279,15 +310,26 @@ export default function Predict() {
   }, []);
 
   const handleGeneratePredictions = useCallback(async () => {
+    setIsLegacyPredicting(true);
+
     try {
-      setIsPredicting(true);
-      const result = await generatePrediction(predDays);
-      if (!result.success) {
-        throw new Error(result.error || 'Gagal menghasilkan prediksi.');
+      const started = await startPrediction(predDays);
+      if (!started.success && started.error === 'Prediction context not ready') {
+        const fallbackResult = await generatePrediction(predDays);
+        if (!fallbackResult?.success) {
+          throw new Error(fallbackResult?.error || 'Gagal menghasilkan prediksi.');
+        }
+
+        setChartData(fallbackResult.chart_data || []);
+        setMetrics(fallbackResult.metrics || null);
+        return;
       }
 
-      setChartData(result.chart_data || []);
-      setMetrics(result.metrics || null);
+      if (!started.success) {
+        throw new Error(started.error || 'Gagal menghasilkan prediksi.');
+      }
+
+      setIsLegacyPredicting(false);
     } catch (err) {
       console.error('Prediction error:', err);
       const serverMessage = err?.response?.data?.error;
@@ -296,9 +338,11 @@ export default function Predict() {
         || 'Gagal menghasilkan prediksi. Coba lagi.';
       alert(message);
     } finally {
-      setIsPredicting(false);
+      if (!isContextPredictionActive) {
+        setIsLegacyPredicting(false);
+      }
     }
-  }, [predDays]);
+  }, [predDays, startPrediction, isContextPredictionActive]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -361,6 +405,7 @@ export default function Predict() {
             <button
               onClick={() => {
                 PredictCache = null;
+                resetPrediction();
                 setDataSource('csv');
                 setPredDays(30);
                 setDataLoaded(false);
@@ -447,17 +492,17 @@ export default function Predict() {
             </div>
           </div>
           <Motion.button
-            whileTap={(!dataLoaded || isPredicting) ? undefined : { scale: 0.98 }}
-            onPointerDown={(!dataLoaded || isPredicting) ? undefined : handlePointerDown}
+            whileTap={(!dataLoaded || isPredictionActive) ? undefined : { scale: 0.98 }}
+            onPointerDown={(!dataLoaded || isPredictionActive) ? undefined : handlePointerDown}
             onClick={handleGeneratePredictions}
-            disabled={!dataLoaded || isPredicting}
-            className={`w-full py-4 relative overflow-hidden text-white font-bold rounded-xl transition-all duration-500 flex items-center justify-center gap-2 ${!dataLoaded || isPredicting ? 'cursor-not-allowed shadow-none' : 'shadow-[0_8px_30px_rgb(212,175,55,0.2)] hover:shadow-[0_8px_40px_rgb(212,175,55,0.4)]'}`}
+            disabled={!dataLoaded || isPredictionActive}
+            className={`w-full py-4 relative overflow-hidden text-white font-bold rounded-xl transition-all duration-500 flex items-center justify-center gap-2 ${!dataLoaded || isPredictionActive ? 'cursor-not-allowed shadow-none' : 'shadow-[0_8px_30px_rgb(212,175,55,0.2)] hover:shadow-[0_8px_40px_rgb(212,175,55,0.4)]'}`}
           >
             {/* Structural Backdrop Shift */}
-            <div className={`absolute inset-0 transition-colors duration-500 ${!dataLoaded && !isPredicting ? 'bg-slate-200 dark:bg-slate-700' : 'bg-primary'}`} />
+            <div className={`absolute inset-0 transition-colors duration-500 ${!dataLoaded && !isPredictionActive ? 'bg-slate-200 dark:bg-slate-700' : 'bg-primary'}`} />
 
             {/* Glowing inner pulse - warm amber */}
-            {isPredicting && (
+            {isPredictionActive && (
                 <Motion.div
                     className="absolute inset-0 bg-gradient-to-tr from-amber-600/0 via-amber-400/60 to-yellow-300/0 mix-blend-overlay pointer-events-none z-10"
                     initial={{ opacity: 0, scale: 0.8 }}
@@ -467,7 +512,7 @@ export default function Predict() {
             )}
 
             {/* Continuous Flowing Gold Gradient Border (Active) */}
-            {isPredicting && (
+            {isPredictionActive && (
                  <div className="absolute inset-[-150%] pointer-events-none z-0">
                     <Motion.div
                        animate={{ rotate: 360 }}
@@ -478,7 +523,7 @@ export default function Predict() {
             )}
 
             {/* Inner Mask (creates the border effect if active or transparent if idle) */}
-            <div className={`absolute inset-[2px] rounded-[10px] pointer-events-none z-0 transition-all duration-500 ${isPredicting ? 'bg-primary border border-white/10 shadow-[inset_0_0_20px_rgba(0,0,0,0.2)]' : 'bg-transparent'}`} />
+            <div className={`absolute inset-[2px] rounded-[10px] pointer-events-none z-0 transition-all duration-500 ${isPredictionActive ? 'bg-primary border border-white/10 shadow-[inset_0_0_20px_rgba(0,0,0,0.2)]' : 'bg-transparent'}`} />
 
             {/* Ripples Element */}
             <div className="absolute inset-0 z-20 overflow-hidden pointer-events-none rounded-xl">
@@ -502,9 +547,9 @@ export default function Predict() {
             <Motion.div
                layout
                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-               className={`relative z-30 flex items-center gap-2 ${(!dataLoaded && !isPredicting) ? 'text-slate-400' : 'text-white'}`}
+              className={`relative z-30 flex items-center gap-2 ${(!dataLoaded && !isPredictionActive) ? 'text-slate-400' : 'text-white'}`}
             >
-              {isPredicting ? (
+              {isPredictionActive ? (
                 <>
                   <Sparkles className="w-5 h-5 animate-pulse text-yellow-200" />
                   <span className="tracking-wide">Memproses...</span>
@@ -524,7 +569,7 @@ export default function Predict() {
       <section className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm mb-8 relative overflow-hidden">
         {/* Glassmorphism Loader Banner Overlay */}
         <AnimatePresence>
-          {isPredicting && (
+          {isPredictionActive && (
             <Motion.div
               initial={{ opacity: 0, backdropFilter: 'blur(0px)' }}
               animate={{ opacity: 1, backdropFilter: 'blur(8px)' }}
@@ -633,18 +678,18 @@ export default function Predict() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {/* Card 1 */}
         <Motion.div
-          animate={isPredicting ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
-          transition={{ duration: 2, repeat: isPredicting ? Infinity : 0, ease: 'easeInOut' }}
-          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredicting ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
+          animate={isPredictionActive ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
+          transition={{ duration: 2, repeat: isPredictionActive ? Infinity : 0, ease: 'easeInOut' }}
+          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredictionActive ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
         >
-          {isPredicting && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
+          {isPredictionActive && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
           <div className="relative z-10">
-            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredicting ? 'bg-primary/20 dark:bg-primary/30' : 'bg-yellow-50 dark:bg-yellow-900/20'}`}>
-              <TrendingDown className={`w-5 h-5 transition-colors ${isPredicting ? 'text-amber-600 dark:text-amber-400' : 'text-primary'} rotate-180`} />
+            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredictionActive ? 'bg-primary/20 dark:bg-primary/30' : 'bg-yellow-50 dark:bg-yellow-900/20'}`}>
+              <TrendingDown className={`w-5 h-5 transition-colors ${isPredictionActive ? 'text-amber-600 dark:text-amber-400' : 'text-primary'} rotate-180`} />
             </div>
             <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Prediksi Hari ke-{predDays}</p>
             <h3 className="text-2xl font-bold mt-1">
-              {isPredicting ? (
+              {isPredictionActive ? (
                   <Motion.div className="h-8 w-2/3 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
               ) : (
                   chartData.length > 0 ? formatRupiah(chartData[chartData.length - 1].predicted) : '—'
@@ -655,18 +700,18 @@ export default function Predict() {
 
         {/* Card 2 */}
         <Motion.div
-          animate={isPredicting ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
-          transition={{ duration: 2, delay: 0.2, repeat: isPredicting ? Infinity : 0, ease: 'easeInOut' }}
-          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredicting ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
+          animate={isPredictionActive ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
+          transition={{ duration: 2, delay: 0.2, repeat: isPredictionActive ? Infinity : 0, ease: 'easeInOut' }}
+          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredictionActive ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
         >
-          {isPredicting && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
+          {isPredictionActive && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
           <div className="relative z-10">
-            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredicting ? 'bg-primary/20 dark:bg-primary/30' : 'bg-indigo-50 dark:bg-indigo-900/20'}`}>
-              <ShieldCheck className={`w-5 h-5 transition-colors ${isPredicting ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-500'}`} />
+            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredictionActive ? 'bg-primary/20 dark:bg-primary/30' : 'bg-indigo-50 dark:bg-indigo-900/20'}`}>
+              <ShieldCheck className={`w-5 h-5 transition-colors ${isPredictionActive ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-500'}`} />
             </div>
             <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Konfiden Skor</p>
             <h3 className="text-2xl font-bold mt-1">
-              {isPredicting ? (
+              {isPredictionActive ? (
                   <Motion.div className="h-8 w-1/2 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
               ) : (
                   metrics ? `${metrics.confidence_score?.toFixed(1)}%` : '—'
@@ -677,18 +722,18 @@ export default function Predict() {
 
         {/* Card 3 */}
         <Motion.div
-          animate={isPredicting ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
-          transition={{ duration: 2, delay: 0.4, repeat: isPredicting ? Infinity : 0, ease: 'easeInOut' }}
-          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredicting ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
+          animate={isPredictionActive ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
+          transition={{ duration: 2, delay: 0.4, repeat: isPredictionActive ? Infinity : 0, ease: 'easeInOut' }}
+          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredictionActive ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
         >
-          {isPredicting && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
+          {isPredictionActive && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
           <div className="relative z-10">
-            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredicting ? 'bg-primary/20 dark:bg-primary/30' : 'bg-emerald-50 dark:bg-emerald-900/20'}`}>
-              <CheckCircle className={`w-5 h-5 transition-colors ${isPredicting ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-500'}`} />
+            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredictionActive ? 'bg-primary/20 dark:bg-primary/30' : 'bg-emerald-50 dark:bg-emerald-900/20'}`}>
+              <CheckCircle className={`w-5 h-5 transition-colors ${isPredictionActive ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-500'}`} />
             </div>
             <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Akurasi Model (MAPE)</p>
             <h3 className="text-2xl font-bold mt-1">
-              {isPredicting ? (
+              {isPredictionActive ? (
                   <Motion.div className="h-8 w-1/2 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
               ) : (
                   metrics ? `${metrics.mape?.toFixed(1)}%` : '—'
@@ -699,18 +744,18 @@ export default function Predict() {
 
         {/* Card 4 */}
         <Motion.div
-          animate={isPredicting ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
-          transition={{ duration: 2, delay: 0.6, repeat: isPredicting ? Infinity : 0, ease: 'easeInOut' }}
-          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredicting ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
+          animate={isPredictionActive ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
+          transition={{ duration: 2, delay: 0.6, repeat: isPredictionActive ? Infinity : 0, ease: 'easeInOut' }}
+          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredictionActive ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
         >
-          {isPredicting && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
+          {isPredictionActive && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
           <div className="relative z-10">
-            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredicting ? 'bg-primary/20 dark:bg-primary/30' : 'bg-rose-50 dark:bg-rose-900/20'}`}>
-              <Database className={`w-5 h-5 transition-colors ${isPredicting ? 'text-amber-600 dark:text-amber-400' : 'text-rose-500'}`} />
+            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredictionActive ? 'bg-primary/20 dark:bg-primary/30' : 'bg-rose-50 dark:bg-rose-900/20'}`}>
+              <Database className={`w-5 h-5 transition-colors ${isPredictionActive ? 'text-amber-600 dark:text-amber-400' : 'text-rose-500'}`} />
             </div>
             <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Status Data</p>
             <h3 className="text-2xl font-bold mt-1">
-              {isPredicting ? (
+              {isPredictionActive ? (
                   <Motion.div className="h-8 w-2/3 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
               ) : (
                   dataLoaded ? "Tersedia" : "Belum Ada"

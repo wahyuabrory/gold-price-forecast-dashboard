@@ -31,6 +31,12 @@ export const generatePrediction = async (days = 30) => {
   return response.data;
 };
 
+// Poll async prediction job status
+export const getPredictionJobStatus = async (jobId) => {
+  const response = await api.get(`/job/${jobId}/status`);
+  return response.data;
+};
+
 // Get model metrics
 export const getMetrics = async () => {
   const response = await api.get("/metrics");

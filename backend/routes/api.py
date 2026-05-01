@@ -1,6 +1,8 @@
 import os
 import io
 import csv
+import uuid
+import threading
 import logging
 from datetime import datetime
 
@@ -17,6 +19,77 @@ api_bp = Blueprint('api', __name__, url_prefix='/api')
 SAMPLE_DATA_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), '..', 'backend/models', 'dataset_final.csv'
 )
+
+PREDICTION_JOBS = {}
+PREDICTION_JOBS_LOCK = threading.Lock()
+ACTIVE_JOB_ID = None
+
+
+def _set_active_job(job_id):
+    global ACTIVE_JOB_ID
+    ACTIVE_JOB_ID = job_id
+
+
+def _clear_active_job_if_matches(job_id):
+    global ACTIVE_JOB_ID
+    if ACTIVE_JOB_ID == job_id:
+        ACTIVE_JOB_ID = None
+
+
+def _is_job_active(job):
+    return bool(job) and job.get('status') in {'pending', 'running'}
+
+
+def _run_prediction_job(job_id, dataset_json, days):
+    """Run prediction in background thread and persist status/result in memory."""
+    try:
+        with PREDICTION_JOBS_LOCK:
+            job = PREDICTION_JOBS.get(job_id)
+            if not job:
+                return
+            job['status'] = 'running'
+            job['started_at'] = datetime.now().isoformat()
+
+        df = pd.read_json(io.StringIO(dataset_json), orient='records')
+        if pd.api.types.is_datetime64_any_dtype(df['date']):
+            df['date'] = df['date'].dt.strftime('%Y-%m-%d')
+
+        model_loaded = predictor.load_model()
+        if not model_loaded:
+            logger.warning('Model failed to load in async prediction job. Predictor may use fallback mode.')
+
+        result = predictor.predict(df, days=days)
+
+        with PREDICTION_JOBS_LOCK:
+            job = PREDICTION_JOBS.get(job_id)
+            if not job:
+                return
+
+            if result.get('success'):
+                prediction_count = len(result.get('predictions', []))
+                prediction_dates = [
+                    (pd.to_datetime(df['date'].iloc[-1]) + pd.Timedelta(days=i + 1)).strftime('%Y-%m-%d')
+                    for i in range(prediction_count)
+                ]
+                job['status'] = 'complete'
+                job['result'] = result
+                job['prediction_dates'] = prediction_dates
+            else:
+                job['status'] = 'failed'
+                job['error'] = result.get('error', 'Prediction failed')
+                job['result'] = result
+
+            job['finished_at'] = datetime.now().isoformat()
+            _clear_active_job_if_matches(job_id)
+    except Exception as e:
+        logger.error('Async prediction job failed: %s', e)
+        with PREDICTION_JOBS_LOCK:
+            job = PREDICTION_JOBS.get(job_id)
+            if job is not None:
+                job['status'] = 'failed'
+                job['error'] = str(e)
+                job['finished_at'] = datetime.now().isoformat()
+            _clear_active_job_if_matches(job_id)
 
 
 @api_bp.route('/health', methods=['GET'])
@@ -235,7 +308,7 @@ def sample_data():
 
 @api_bp.route('/predict', methods=['POST'])
 def predict():
-    """Generate predictions using GRU model."""
+    """Create async prediction job and return immediately with job id."""
     dataset_json = session.get('dataset')
     if not dataset_json:
         return jsonify({'success': False, 'error': 'Upload dataset terlebih dahulu'}), 400
@@ -246,43 +319,65 @@ def predict():
     except (TypeError, ValueError):
         days = 30
 
-    try:
-        df = pd.read_json(io.StringIO(dataset_json), orient='records')
-        # Convert dates back to strings if they became timestamps
-        if pd.api.types.is_datetime64_any_dtype(df['date']):
-            df['date'] = df['date'].dt.strftime('%Y-%m-%d')
+    with PREDICTION_JOBS_LOCK:
+        active_job = PREDICTION_JOBS.get(ACTIVE_JOB_ID) if ACTIVE_JOB_ID else None
+        if _is_job_active(active_job):
+            return jsonify({
+                'success': False,
+                'error': 'Prediction job already in progress',
+                'active_job_id': ACTIVE_JOB_ID,
+            }), 409
 
-        # Ensure model is loaded
-        model_loaded = predictor.load_model()
-        if not model_loaded:
-            logger.warning('Model failed to load. Predictor may use fallback mode.')
+        job_id = str(uuid.uuid4())
+        PREDICTION_JOBS[job_id] = {
+            'id': job_id,
+            'status': 'pending',
+            'created_at': datetime.now().isoformat(),
+            'days': days,
+            'result': None,
+            'error': None,
+        }
+        _set_active_job(job_id)
 
-        # Generate predictions
-        result = predictor.predict(df, days=days)
+    worker = threading.Thread(
+        target=_run_prediction_job,
+        args=(job_id, dataset_json, days),
+        daemon=True,
+    )
+    worker.start()
 
-        # Store predictions in session
-        if result.get('success'):
+    logger.info('Prediction job created: job_id=%s, days=%s', job_id, days)
+    return jsonify({'success': True, 'job_id': job_id, 'status': 'pending'}), 202
+
+
+@api_bp.route('/job/<job_id>/status', methods=['GET'])
+def job_status(job_id):
+    """Get async prediction job status and completed result payload."""
+    with PREDICTION_JOBS_LOCK:
+        job = PREDICTION_JOBS.get(job_id)
+        if not job:
+            return jsonify({'success': False, 'error': 'Job not found'}), 404
+
+        status = job.get('status', 'pending')
+        response = {
+            'success': True,
+            'job_id': job_id,
+            'status': status,
+        }
+
+        if status == 'complete':
+            result = job.get('result') or {}
+            response['result'] = result
+
+            # Keep existing export/metrics endpoints working for the active session.
             session['predictions'] = result.get('predictions', [])
-            prediction_count = len(result.get('predictions', []))
-            session['prediction_dates'] = [
-                (pd.to_datetime(df['date'].iloc[-1]) + pd.Timedelta(days=i+1)).strftime('%Y-%m-%d')
-                for i in range(prediction_count)
-            ]
+            session['prediction_dates'] = job.get('prediction_dates', [])
             session['metrics'] = result.get('metrics', {})
             session['model_mode'] = 'fallback' if result.get('fallback') else 'gru'
+        elif status == 'failed':
+            response['error'] = job.get('error', 'Prediction job failed')
 
-        logger.info(
-            "Prediction request served: horizon_days=%s, success=%s, fallback=%s",
-            days,
-            bool(result.get('success')),
-            bool(result.get('fallback', False)),
-        )
-
-        return jsonify(result)
-
-    except Exception as e:
-        logger.error(f"Prediction error: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    return jsonify(response)
 
 
 @api_bp.route('/metrics', methods=['GET'])

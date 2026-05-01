@@ -17,6 +17,7 @@ import sys
 import io
 import json
 import csv
+import time
 import pytest
 import pandas as pd
 from datetime import datetime, timedelta
@@ -25,6 +26,25 @@ from datetime import datetime, timedelta
 BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
+
+
+def wait_for_job_completion(client, job_id, timeout_seconds=30):
+    """Poll async prediction job until it reaches a terminal state."""
+    deadline = time.time() + timeout_seconds
+    last_payload = None
+
+    while time.time() < deadline:
+        response = client.get(f'/api/job/{job_id}/status')
+        assert response.status_code == 200
+        payload = response.get_json()
+        last_payload = payload
+
+        if payload.get('status') in {'complete', 'failed'}:
+            return payload
+
+        time.sleep(0.15)
+
+    raise AssertionError(f'Prediction job did not finish in time. Last payload: {last_payload}')
 
 
 class TestUploadValidation:
@@ -117,15 +137,20 @@ class TestPredictionGeneration:
             data=json.dumps({'days': 30}),
             content_type='application/json'
         )
-        
-        assert pred_response.status_code == 200
+
+        assert pred_response.status_code == 202
         json_data = pred_response.get_json()
         assert json_data['success'] is True
-        assert 'predictions' in json_data
-        assert len(json_data['predictions']) == 30
+        assert 'job_id' in json_data
+
+        result_payload = wait_for_job_completion(client, json_data['job_id'])
+        assert result_payload['status'] == 'complete'
+        result = result_payload['result']
+        assert 'predictions' in result
+        assert len(result['predictions']) == 30
         # Verify prediction schema
-        assert 'chart_data' in json_data
-        assert 'metrics' in json_data
+        assert 'chart_data' in result
+        assert 'metrics' in result
 
     def test_predict_clamped_to_90_days(self, client, sample_csv_file):
         """Test that prediction days are clamped to maximum of 90."""
@@ -141,11 +166,13 @@ class TestPredictionGeneration:
             data=json.dumps({'days': 200}),
             content_type='application/json'
         )
-        
-        assert pred_response.status_code == 200
+
+        assert pred_response.status_code == 202
         json_data = pred_response.get_json()
         assert json_data['success'] is True
-        assert len(json_data['predictions']) == 90
+        result_payload = wait_for_job_completion(client, json_data['job_id'])
+        assert result_payload['status'] == 'complete'
+        assert len(result_payload['result']['predictions']) == 90
 
     def test_predict_default_30_days(self, client, sample_csv_file):
         """Test that predictions default to 30 days when not specified."""
@@ -161,10 +188,36 @@ class TestPredictionGeneration:
             data=json.dumps({}),
             content_type='application/json'
         )
-        
-        assert pred_response.status_code == 200
+
+        assert pred_response.status_code == 202
         json_data = pred_response.get_json()
-        assert len(json_data['predictions']) == 30
+        result_payload = wait_for_job_completion(client, json_data['job_id'])
+        assert result_payload['status'] == 'complete'
+        assert len(result_payload['result']['predictions']) == 30
+
+    def test_second_predict_request_returns_conflict_while_active(self, client, sample_csv_file):
+        """Test that a second prediction request is rejected with 409 while first job is active."""
+        upload_data = {
+            'file': (io.BytesIO(sample_csv_file.encode('utf-8')), 'test.csv')
+        }
+        client.post('/api/upload', data=upload_data, content_type='multipart/form-data')
+
+        first = client.post(
+            '/api/predict',
+            data=json.dumps({'days': 30}),
+            content_type='application/json'
+        )
+        assert first.status_code == 202
+        first_job_id = first.get_json()['job_id']
+
+        second = client.post(
+            '/api/predict',
+            data=json.dumps({'days': 15}),
+            content_type='application/json'
+        )
+        assert second.status_code == 409
+
+        wait_for_job_completion(client, first_job_id)
 
 
 class TestMetricsRetrieval:
@@ -179,11 +232,16 @@ class TestMetricsRetrieval:
         client.post('/api/upload', data=upload_data, content_type='multipart/form-data')
         
         # Generate predictions
-        client.post(
+        prediction_response = client.post(
             '/api/predict',
             data=json.dumps({'days': 30}),
             content_type='application/json'
         )
+        assert prediction_response.status_code == 202
+
+        job_id = prediction_response.get_json()['job_id']
+        final_payload = wait_for_job_completion(client, job_id)
+        assert final_payload['status'] == 'complete'
         
         # Get metrics
         metrics_response = client.get('/api/metrics')
@@ -208,11 +266,16 @@ class TestPredictionExport:
         client.post('/api/upload', data=upload_data, content_type='multipart/form-data')
         
         # Generate predictions
-        client.post(
+        prediction_response = client.post(
             '/api/predict',
             data=json.dumps({'days': 30}),
             content_type='application/json'
         )
+        assert prediction_response.status_code == 202
+
+        job_id = prediction_response.get_json()['job_id']
+        final_payload = wait_for_job_completion(client, job_id)
+        assert final_payload['status'] == 'complete'
         
         # Export
         export_response = client.get('/api/export')
@@ -387,7 +450,7 @@ class TestConcurrentPredictions:
     """Test multiple predictions in sequence work correctly."""
 
     def test_concurrent_predictions(self, client, sample_csv_file):
-        """Test that multiple predictions in sequence work correctly."""
+        """Test that multiple predictions in sequence work correctly with async job polling."""
         # Upload data
         upload_data = {
             'file': (io.BytesIO(sample_csv_file.encode('utf-8')), 'test.csv')
@@ -403,8 +466,10 @@ class TestConcurrentPredictions:
                 data=json.dumps({'days': days}),
                 content_type='application/json'
             )
-            
-            assert response.status_code == 200
+
+            assert response.status_code == 202
             json_data = response.get_json()
             assert json_data['success'] is True
-            assert len(json_data['predictions']) == days
+            final_payload = wait_for_job_completion(client, json_data['job_id'])
+            assert final_payload['status'] == 'complete'
+            assert len(final_payload['result']['predictions']) == days
