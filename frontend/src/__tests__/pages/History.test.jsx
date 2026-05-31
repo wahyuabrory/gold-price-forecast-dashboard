@@ -1,7 +1,6 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import History from '../../pages/History';
 import * as api from '../../services/api';
 
@@ -17,6 +16,8 @@ describe('History Page', () => {
     std_dev: 8000,
     biggest_gain: 50000,
     biggest_loss: -40000,
+    biggest_gain_date: '2025-01-03',
+    biggest_loss_date: '2025-01-02',
     chart_data: [
       { date: '2025-01-01', price: 950000 },
       { date: '2025-01-02', price: 955000 },
@@ -185,6 +186,16 @@ describe('History Page', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Kenaikan Terbesar/i)).toBeInTheDocument();
+    });
+  });
+
+  it('should display biggest gain date', async () => {
+    api.getHistoricalData.mockResolvedValue(mockHistoryData30d);
+
+    render(<History />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Terjadi pada/i)).toHaveLength(2);
     });
   });
 

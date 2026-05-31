@@ -1,3 +1,4 @@
+import React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine
@@ -47,14 +48,14 @@ export default function History() {
   }, [fetchData]);
 
   const chartData = data?.chart_data || [];
-  const volatilityData = data?.volatility_data || [];
-  const currentPrice = data?.current_price ?? 0;
   const priceChangePct = data?.price_change_pct ?? 0;
   const avgChange = data?.avg_daily_change ?? 0;
   const avgPrice = data?.avg_price ?? 0;
   const stdDev = data?.std_dev ?? 0;
   const biggestGain = data?.biggest_gain ?? 0;
   const biggestLoss = data?.biggest_loss ?? 0;
+  const biggestGainDate = data?.biggest_gain_date;
+  const biggestLossDate = data?.biggest_loss_date;
   const sentiment = priceChangePct >= 0 ? 'Bullish Market' : 'Bearish Market';
 
   const formattedVolatility = chartData.map((item, index, arr) => {
@@ -122,6 +123,9 @@ export default function History() {
           <h3 className="text-2xl font-bold mt-1 text-emerald-500">
             +{formatRupiah(biggestGain)}
           </h3>
+          {biggestGainDate && (
+            <p className="text-xs text-slate-400 mt-2">Terjadi pada {formatDate(biggestGainDate)}</p>
+          )}
         </div>
 
         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
@@ -132,6 +136,9 @@ export default function History() {
           <h3 className="text-2xl font-bold mt-1 text-rose-500">
             -{formatRupiah(Math.abs(biggestLoss))}
           </h3>
+          {biggestLossDate && (
+            <p className="text-xs text-slate-400 mt-2">Terjadi pada {formatDate(biggestLossDate)}</p>
+          )}
         </div>
       </div>
 

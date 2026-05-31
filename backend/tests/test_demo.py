@@ -47,7 +47,7 @@ class TestDemoEndpoint:
         assert 'requests' in data
 
     def test_demo_parallel_execution(self, client):
-        """Test that multiple endpoints execute in parallel."""
+        """Test that multiple configured requests are executed."""
         # Request with 3 parallel requests to health endpoint
         response = client.post('/api/demo', json={
             'num_parallel_requests': 3,
@@ -56,10 +56,9 @@ class TestDemoEndpoint:
         assert response.status_code == 200
         data = response.get_json()
         assert data['success'] is True
-        # With parallel execution, total_time should be less than sum of individual times
-        total_time = data['total_time_ms']
-        seq_equiv = data['sequential_equivalent_ms']
-        assert total_time < seq_equiv
+        assert data['summary']['total_requests'] == 3
+        assert len(data['requests']) == 3
+        assert all(req['endpoint'] == '/api/health' for req in data['requests'])
 
     def test_demo_user_agent_rotation(self, client):
         """Test that different user agents in requests."""

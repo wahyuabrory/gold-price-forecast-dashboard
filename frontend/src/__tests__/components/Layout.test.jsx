@@ -1,20 +1,9 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { ThemeContext } from '../../context/ThemeContext';
-
-// Mock ThemeContext for testing
-const mockThemeValue = {
-  isDark: false,
-  toggleTheme: vi.fn(),
-};
-
-const renderWithRouter = (component) => {
-  return render(<BrowserRouter>{component}</BrowserRouter>);
-};
 
 const renderWithTheme = (component, isDark = false) => {
   const themeValue = {
@@ -258,7 +247,6 @@ describe('Layout Component', () => {
       btn.querySelector('svg')
     );
 
-    const sidebar = screen.getByText(/XAU\/IDR/i).closest('aside');
     expect(toggleButton).toBeInTheDocument();
   });
 

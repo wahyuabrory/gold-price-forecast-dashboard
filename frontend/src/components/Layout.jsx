@@ -78,7 +78,7 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className="mt-2 px-4 space-y-2 flex-1">
-          {navItems.map(({ to, label, icon: Icon }) => (
+          {navItems.map(({ to, label, icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -91,7 +91,7 @@ export default function Layout() {
                 }`
               }
             >
-              <Icon className="w-5 h-5" />
+              {React.createElement(icon, { className: 'w-5 h-5' })}
               <span className="font-medium text-sm">{label}</span>
             </NavLink>
           ))}

@@ -1,14 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import axios from 'axios';
-import {
-  uploadCSV,
-  loadSampleData,
-  generatePrediction,
-  getMetrics,
-  exportPredictions,
-  getDashboardData,
-  getHistoricalData,
-} from '../../services/api';
 
 // Mock axios completely
 vi.mock('axios');
@@ -30,7 +21,6 @@ describe('API Service', () => {
 
   describe('uploadCSV', () => {
     it('should upload CSV file successfully', async () => {
-      const mockFile = new File(['test,data'], 'test.csv', { type: 'text/csv' });
       const mockResponse = { data: { success: true, message: 'File uploaded' } };
 
       axios.create.mockReturnValue({

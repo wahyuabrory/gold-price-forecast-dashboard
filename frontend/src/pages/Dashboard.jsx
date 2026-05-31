@@ -1,3 +1,4 @@
+import React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -48,7 +49,6 @@ export default function Dashboard() {
   const getChartData = () => {
     if (!dashData?.chart_data) return [];
     const data = dashData.chart_data;
-    const now = data.length;
     switch (timeRange) {
       case '7d': return data.slice(-7);
       case '30d': return data.slice(-30);
