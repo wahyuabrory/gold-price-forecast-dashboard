@@ -43,3 +43,4 @@ htmlcov/
 .pytest_cache/
 .agents/*
 .agents/
+worktrees/
