@@ -18,7 +18,7 @@ def _validate_environment():
     if missing:
         raise ValueError(
             f"Missing required environment variable(s): {', '.join(missing)}. "
-            f"See backend/.env.example for configuration template."
+            "Create backend/.env and set the required variables."
         )
 
 def create_app():
