@@ -1,17 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import axios from 'axios';
 
-// Mock axios completely
+
 vi.mock('axios');
 
-// Mock window.URL methods
+
 global.URL.createObjectURL = vi.fn();
 global.URL.revokeObjectURL = vi.fn();
 
 describe('API Service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset window methods mocks
+
     global.URL.createObjectURL.mockReturnValue('blob:mock-url');
   });
 
@@ -229,7 +229,7 @@ describe('API Service', () => {
 
   describe('exportPredictions', () => {
     beforeEach(() => {
-      // Mock DOM manipulation
+
       document.body.appendChild = vi.fn();
       document.body.removeChild = vi.fn();
     });
@@ -466,23 +466,23 @@ describe('API Service', () => {
 
   describe('API Configuration', () => {
     it('should have 120 second timeout', () => {
-      // This verifies timeout config in api.js
-      expect(true).toBe(true); // Timeout is hardcoded in api.js
+
+      expect(true).toBe(true);
     });
 
     it('should use withCredentials for CORS', () => {
-      // This verifies withCredentials config in api.js
-      expect(true).toBe(true); // withCredentials is set in api.js
+
+      expect(true).toBe(true);
     });
 
     it('should have Content-Type application/json', () => {
-      // This verifies default headers in api.js
-      expect(true).toBe(true); // Headers are set in api.js
+
+      expect(true).toBe(true);
     });
 
     it('should use /api as base URL', () => {
-      // This verifies baseURL in api.js
-      expect(true).toBe(true); // baseURL is set in api.js
+
+      expect(true).toBe(true);
     });
   });
 

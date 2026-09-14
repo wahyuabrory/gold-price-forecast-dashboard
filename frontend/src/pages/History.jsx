@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine
 } from 'recharts';
@@ -15,9 +15,9 @@ const PERIODS = [
 ];
 
 const ChartTooltip = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
+  if (active && payload?.length) {
     return (
-      <div className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-3 py-2 rounded-lg text-xs font-bold shadow-xl">
+      <div className="bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-xl">
         <p>{formatChartDate(label)}</p>
         <p className="text-primary">{formatRupiah(payload[0].value)}</p>
       </div>
@@ -31,21 +31,20 @@ export default function History() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const result = await getHistoricalData(period);
-      setData(result);
-    } catch (err) {
-      console.error('Historical data error:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [period]);
-
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setData(await getHistoricalData(period));
+      } catch (err) {
+        console.error('Historical data error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchData();
-  }, [fetchData]);
+  }, [period]);
 
   const chartData = data?.chart_data || [];
   const priceChangePct = data?.price_change_pct ?? 0;
@@ -71,11 +70,10 @@ export default function History() {
 
   return (
     <div className="p-8">
-      {/* Header */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-slate-900 dark:text-white">Data Historis Harga Emas</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">
+          <h1 className="text-3xl font-serif font-bold text-slate-900 ">Data Historis Harga Emas</h1>
+          <p className="text-slate-500 mt-1">
             Analisis pergerakan harga emas berdasarkan periode waktu tertentu.
           </p>
         </div>
@@ -83,43 +81,42 @@ export default function History() {
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
-            className="pl-4 pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium focus:ring-2 focus:ring-primary focus:border-primary shadow-sm custom-select"
+            className="pl-4 pr-10 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-medium focus:ring-2 focus:ring-primary focus:border-primary shadow-sm custom-select"
           >
             {PERIODS.map((p) => (
-              <option key={p.value} value={p.value} className="bg-white dark:bg-slate-800">{p.label}</option>
+              <option key={p.value} value={p.value} className="bg-white ">{p.label}</option>
             ))}
           </select>
         </div>
       </header>
 
-      {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
-          <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl w-fit mb-4">
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+          <div className="p-3 bg-yellow-50 rounded-xl w-fit mb-4">
             <BarChart3 className="w-5 h-5 text-primary" />
           </div>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Harga Rata-rata</p>
+          <p className="text-slate-500 text-sm font-medium">Harga Rata-rata</p>
           <h3 className="text-2xl font-bold mt-1">
             {formatRupiah(avgPrice)}
           </h3>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
-          <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl w-fit mb-4">
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+          <div className="p-3 bg-indigo-50 rounded-xl w-fit mb-4">
             <ArrowUpDown className="w-5 h-5 text-indigo-500" />
           </div>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Perubahan (Avg)</p>
+          <p className="text-slate-500 text-sm font-medium">Perubahan (Avg)</p>
           <h3 className="text-2xl font-bold mt-1">
             {formatRupiah(Math.abs(avgChange))}
             <span className={`text-sm font-normal ml-1 ${avgChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>/hari</span>
           </h3>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
-          <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl w-fit mb-4">
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+          <div className="p-3 bg-emerald-50 rounded-xl w-fit mb-4">
             <TrendingUp className="w-5 h-5 text-emerald-500" />
           </div>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Kenaikan Terbesar</p>
+          <p className="text-slate-500 text-sm font-medium">Kenaikan Terbesar</p>
           <h3 className="text-2xl font-bold mt-1 text-emerald-500">
             +{formatRupiah(biggestGain)}
           </h3>
@@ -128,11 +125,11 @@ export default function History() {
           )}
         </div>
 
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
-          <div className="p-3 bg-rose-50 dark:bg-rose-900/20 rounded-xl w-fit mb-4">
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+          <div className="p-3 bg-rose-50 rounded-xl w-fit mb-4">
             <TrendingUp className="w-5 h-5 text-rose-500 rotate-180" />
           </div>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Penurunan Terbesar</p>
+          <p className="text-slate-500 text-sm font-medium">Penurunan Terbesar</p>
           <h3 className="text-2xl font-bold mt-1 text-rose-500">
             -{formatRupiah(Math.abs(biggestLoss))}
           </h3>
@@ -142,24 +139,23 @@ export default function History() {
         </div>
       </div>
 
-      {/* Main Chart Section */}
-      <section className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm mb-8">
+      <section className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm mb-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
             <h2 className="text-xl font-bold flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-primary" />
               Tren Harga Emas
             </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-sm text-slate-500 mt-1">
               Visualisasi pergerakan harga historis berdasarkan periode yang dipilih.
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-3 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 ">
               <span className={`text-xs font-bold ${priceChangePct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                 {priceChangePct >= 0 ? '+' : ''}{priceChangePct}%
               </span>
-              <span className="text-xs font-medium text-slate-500 border-l border-slate-200 dark:border-slate-700 pl-3">
+              <span className="text-xs font-medium text-slate-500 border-l border-slate-200 pl-3">
                 {sentiment}
               </span>
             </div>
@@ -213,22 +209,21 @@ export default function History() {
         </div>
       </section>
 
-      {/* Bottom Grid: Volatility */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col hover:shadow-md transition-shadow">
+        <div className="lg:col-span-2 bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex flex-col hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-8">
              <div>
               <h3 className="font-bold flex items-center text-lg">
                 <BarChart3 className="w-5 h-5 text-primary mr-2" />
                 Volatilitas Harga (Persentase Perubahan Harian)
               </h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              <p className="text-sm text-slate-500 mt-1">
                 Distribusi pergerakan harga emas secara persentase harian dalam rentang -8% hingga +8%.
               </p>
              </div>
              <div className="flex flex-col items-end">
-                <p className="text-xs text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider mb-1">Volatilitas (STD)</p>
-                <h4 className="text-xl font-bold text-slate-900 dark:text-white">{stdDev ? `${stdDev.toFixed(2)}%` : '—'}</h4>
+                <p className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1">Volatilitas (STD)</p>
+                <h4 className="text-xl font-bold text-slate-900 ">{stdDev ? `${stdDev.toFixed(2)}%` : '—'}</h4>
              </div>
           </div>
           <div className="h-[300px] w-full">
@@ -257,7 +252,7 @@ export default function History() {
                       if (active && payload && payload.length) {
                         const isPos = payload[0].payload.isPositive;
                         return (
-                          <div className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-3 py-2 rounded-lg text-xs font-bold shadow-xl">
+                          <div className="bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-xl">
                             <p>{formatChartDate(label)}</p>
                             <p className={isPos ? "text-primary" : "text-slate-400"}>
                               {isPos ? '+' : ''}{payload[0].value}%

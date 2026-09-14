@@ -41,7 +41,6 @@ def _is_job_active(job):
 
 
 def _run_prediction_job(job_id, dataset_json, days):
-    """Run prediction in background thread and persist status/result in memory."""
     try:
         with PREDICTION_JOBS_LOCK:
             job = PREDICTION_JOBS.get(job_id)
@@ -94,17 +93,12 @@ def _run_prediction_job(job_id, dataset_json, days):
 
 @api_bp.route('/health', methods=['GET'])
 def health():
-    """Health check endpoint for monitoring and load balancers."""
-    # Check if model is loaded
     model_loaded = predictor._loaded
     if not model_loaded:
-        # Try to load model on first health check
         model_loaded = predictor.load_model()
 
-    # Check if dataset is in session
     dataset_loaded = 'dataset' in session
 
-    # Get dataset info if available
     dataset_info = None
     if dataset_loaded:
         try:
@@ -119,7 +113,6 @@ def health():
             logger.error(f"Error reading dataset from session: {e}")
             dataset_info = {'loaded': False}
 
-    # Determine overall health status
     is_healthy = model_loaded
 
     response = {
@@ -134,17 +127,13 @@ def health():
         'version': '1.0.0',
     }
 
-    # Return 200 if healthy, 503 if model failed to load
     status_code = 200 if is_healthy else 503
     return jsonify(response), status_code
 
 
 def _parse_csv(df):
-    """Parse and normalize CSV DataFrame to standard format."""
-    # Normalize column names
     df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
 
-    # Detect date column
     date_col = None
     for col in ['date', 'tanggal', 'dates']:
         if col in df.columns:
@@ -153,7 +142,6 @@ def _parse_csv(df):
     if date_col is None:
         date_col = df.columns[0]
 
-    # Detect price column
     price_col = None
     for col in ['gold_price', 'close', 'price', 'harga', 'close_price']:
         if col in df.columns:
@@ -162,7 +150,6 @@ def _parse_csv(df):
     if price_col is None:
         price_col = df.columns[1]
 
-    # Detect optional columns (usd_idr, inflation, interest_rate)
     usd_idr_col = None
     inflation_col = None
     interest_rate_col = None
@@ -176,11 +163,8 @@ def _parse_csv(df):
         elif 'interest' in col_lower or 'rate' in col_lower:
             interest_rate_col = col
 
-    # Parse dates
     raw_dates = df[date_col].astype(str).str.strip()
 
-    # Try both day-first strategies and pick the one with fewer parsing failures.
-    # This helps mixed Indonesian/English style datasets without changing API contract.
     parsed_dates_dayfirst_false = pd.to_datetime(raw_dates, format='mixed', dayfirst=False, errors='coerce')
     parsed_dates_dayfirst_true = pd.to_datetime(raw_dates, format='mixed', dayfirst=True, errors='coerce')
 
@@ -200,34 +184,31 @@ def _parse_csv(df):
 
     df = df.sort_values(date_col).reset_index(drop=True)
 
-    # Build standard dataframe
     result = {
         'date': df[date_col].dt.strftime('%Y-%m-%d'),
         'gold_price': pd.to_numeric(df[price_col], errors='coerce'),
     }
 
-    # Add optional columns if available, otherwise use defaults
     if usd_idr_col:
         result['usd_idr'] = pd.to_numeric(df[usd_idr_col], errors='coerce')
     else:
         logger.warning('Kolom usd_idr tidak ditemukan. Menggunakan default 13000.0')
-        result['usd_idr'] = 13000.0  # Default USD-IDR rate
+        result['usd_idr'] = 13000.0
 
     if inflation_col:
         result['inflation'] = pd.to_numeric(df[inflation_col], errors='coerce')
     else:
         logger.warning('Kolom inflation tidak ditemukan. Menggunakan default 0.03')
-        result['inflation'] = 0.03  # Default inflation rate
+        result['inflation'] = 0.03
 
     if interest_rate_col:
         result['interest_rate'] = pd.to_numeric(df[interest_rate_col], errors='coerce')
     else:
         logger.warning('Kolom interest_rate tidak ditemukan. Menggunakan default 0.05')
-        result['interest_rate'] = 0.05  # Default interest rate
+        result['interest_rate'] = 0.05
 
     result_df = pd.DataFrame(result)
 
-    # Fill optional numeric columns robustly to avoid NaNs entering model features.
     for col in ['usd_idr', 'inflation', 'interest_rate']:
         result_df[col] = pd.to_numeric(result_df[col], errors='coerce')
         if result_df[col].isna().any():
@@ -235,7 +216,6 @@ def _parse_csv(df):
 
     result_df = result_df.dropna(subset=['date', 'gold_price'])
 
-    # Defensive dedupe on date while keeping latest occurrence.
     result_df = result_df.drop_duplicates(subset=['date'], keep='last').reset_index(drop=True)
 
     return result_df
@@ -243,7 +223,6 @@ def _parse_csv(df):
 
 @api_bp.route('/upload', methods=['POST'])
 def upload_csv():
-    """Upload and parse a CSV dataset."""
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': 'File tidak ditemukan'}), 400
 
@@ -264,7 +243,6 @@ def upload_csv():
                 'error': 'Dataset minimal harus 60 baris data'
             }), 400
 
-        # Store in session
         session['dataset'] = parsed.to_json(orient='records')
         session['filename'] = file.filename
         session['uploaded_at'] = datetime.now().isoformat()
@@ -284,7 +262,6 @@ def upload_csv():
 
 @api_bp.route('/sample-data', methods=['GET'])
 def sample_data():
-    """Load built-in demo dataset."""
     try:
         df = pd.read_csv(SAMPLE_DATA_PATH)
         parsed = _parse_csv(df)
@@ -308,7 +285,6 @@ def sample_data():
 
 @api_bp.route('/predict', methods=['POST'])
 def predict():
-    """Create async prediction job and return immediately with job id."""
     dataset_json = session.get('dataset')
     if not dataset_json:
         return jsonify({'success': False, 'error': 'Upload dataset terlebih dahulu'}), 400
@@ -352,7 +328,6 @@ def predict():
 
 @api_bp.route('/job/<job_id>/status', methods=['GET'])
 def job_status(job_id):
-    """Get async prediction job status and completed result payload."""
     with PREDICTION_JOBS_LOCK:
         job = PREDICTION_JOBS.get(job_id)
         if not job:
@@ -369,7 +344,6 @@ def job_status(job_id):
             result = job.get('result') or {}
             response['result'] = result
 
-            # Keep existing export/metrics endpoints working for the active session.
             session['predictions'] = result.get('predictions', [])
             session['prediction_dates'] = job.get('prediction_dates', [])
             session['metrics'] = result.get('metrics', {})
@@ -382,7 +356,6 @@ def job_status(job_id):
 
 @api_bp.route('/metrics', methods=['GET'])
 def metrics():
-    """Return cached model metrics."""
     cached_metrics = session.get('metrics')
     if cached_metrics:
         return jsonify({'success': True, 'metrics': cached_metrics})
@@ -391,7 +364,6 @@ def metrics():
 
 @api_bp.route('/export', methods=['GET'])
 def export_predictions():
-    """Export predictions as CSV file."""
     predictions = session.get('predictions')
     pred_dates = session.get('prediction_dates')
 
@@ -416,11 +388,9 @@ def export_predictions():
 
 @api_bp.route('/dashboard', methods=['GET'])
 def dashboard():
-    """Return dashboard summary data."""
     dataset_json = session.get('dataset')
 
     if not dataset_json:
-        # Try loading sample data automatically
         try:
             df = pd.read_csv(SAMPLE_DATA_PATH)
             parsed = _parse_csv(df)
@@ -444,7 +414,6 @@ def dashboard():
 
     try:
         df = pd.read_json(io.StringIO(dataset_json), orient='records')
-        # Convert dates back to strings if they became timestamps
         if pd.api.types.is_datetime64_any_dtype(df['date']):
             df['date'] = df['date'].dt.strftime('%Y-%m-%d')
         prices = df['gold_price'].values
@@ -456,7 +425,6 @@ def dashboard():
         lowest_idx = np.argmin(prices)
         highest_idx = np.argmax(prices)
 
-        # Last 30 days volatility
         last_30 = prices[-30:] if len(prices) >= 30 else prices
         std_30 = np.std(last_30)
         mean_30 = np.mean(last_30)
@@ -469,21 +437,18 @@ def dashboard():
         else:
             volatility_label = f'Tinggi ({volatility_pct}%)'
 
-        # Sentiment based on recent trend
         if len(prices) >= 7:
             week_change = (prices[-1] - prices[-7]) / prices[-7] * 100
             sentiment = 'Bullish' if week_change > 0.5 else ('Bearish' if week_change < -0.5 else 'Neutral')
         else:
             sentiment = 'Neutral'
 
-        # Simple tomorrow prediction (last price + average daily change)
         if len(prices) >= 7:
             avg_change = np.mean(np.diff(prices[-7:]))
             tomorrow = current_price + avg_change
         else:
             tomorrow = current_price
 
-        # Chart data
         chart_data = [
             {'date': row['date'], 'price': float(row['gold_price'])}
             for _, row in df.iterrows()
@@ -510,12 +475,10 @@ def dashboard():
 
 @api_bp.route('/historical', methods=['GET'])
 def historical():
-    """Return historical analysis data."""
     dataset_json = session.get('dataset')
     period = request.args.get('period', '30d')
 
     if not dataset_json:
-        # Auto-load sample data
         try:
             df = pd.read_csv(SAMPLE_DATA_PATH)
             parsed = _parse_csv(df)
@@ -526,11 +489,9 @@ def historical():
 
     try:
         df = pd.read_json(io.StringIO(dataset_json), orient='records')
-        # Convert dates back to strings if they became timestamps
         if pd.api.types.is_datetime64_any_dtype(df['date']):
             df['date'] = df['date'].dt.strftime('%Y-%m-%d')
 
-        # Filter by period
         if period == '30d':
             df_filtered = df.tail(30)
         elif period == '90d':
@@ -546,25 +507,30 @@ def historical():
 
         price_change_pct = round((current_price - first_price) / first_price * 100, 2)
 
-        # Daily changes
         daily_changes = np.diff(prices)
         avg_change = round(float(np.mean(daily_changes)), 0) if len(daily_changes) > 0 else 0
         avg_price = round(float(np.mean(prices)), 0)
 
-        # Volatility (std of daily returns)
         daily_returns = daily_changes / prices[:-1] * 100 if len(prices) > 1 else []
         std_dev = round(float(np.std(daily_returns)), 2) if len(daily_returns) > 0 else 0
 
         biggest_gain = round(float(np.max(daily_changes)), 0) if len(daily_changes) > 0 else 0
         biggest_loss = round(float(np.min(daily_changes)), 0) if len(daily_changes) > 0 else 0
 
-        # Chart data
+        if len(daily_changes) > 0:
+            biggest_gain_idx = int(np.argmax(daily_changes)) + 1
+            biggest_loss_idx = int(np.argmin(daily_changes)) + 1
+            biggest_gain_date = str(df_filtered['date'].iloc[biggest_gain_idx])
+            biggest_loss_date = str(df_filtered['date'].iloc[biggest_loss_idx])
+        else:
+            biggest_gain_date = None
+            biggest_loss_date = None
+
         chart_data = [
             {'date': row['date'], 'price': float(row['gold_price'])}
             for _, row in df_filtered.iterrows()
         ]
 
-        # Volatility bar chart data (daily variance in chunks)
         chunk_size = max(1, len(daily_returns) // 10)
         volatility_data = []
         for i in range(0, len(daily_returns), chunk_size):
@@ -586,6 +552,8 @@ def historical():
             'std_dev': std_dev,
             'biggest_gain': biggest_gain,
             'biggest_loss': biggest_loss,
+            'biggest_gain_date': biggest_gain_date,
+            'biggest_loss_date': biggest_loss_date,
             'chart_data': chart_data,
             'volatility_data': volatility_data,
         })

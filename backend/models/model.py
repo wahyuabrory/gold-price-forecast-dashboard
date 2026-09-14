@@ -1,21 +1,3 @@
-# %% [markdown]
-# # Gold Price Prediction: LSTM & GRU Modeling
-# ## (Feature Engineered + Hyperparameter Tuning)
-#
-# This notebook builds **LSTM** and **GRU** models for Indonesian gold price prediction with:
-# - **Engineered Features**: Lag features, rolling statistics, percentage changes
-# - **Original Features**: USD/IDR exchange rate, inflation, BI-7Day-RR interest rate
-# - **Target**: Gold price (IDR)
-# - **Normalization**: MinMaxScaler [0, 1]
-# - **Split schemes**: 70:30, 80:20, 90:10 (time-based, chronological)
-# - **Hyperparameter Tuning**: Grid search over units, dropout, learning rate with TimeSeriesSplit CV
-# - **Validation**: TimeSeriesSplit on training set
-# - **Evaluation**: RMSE and MAPE
-
-# %% [markdown]
-# ## 1. Import Required Libraries
-
-# %%
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -44,10 +26,6 @@ print(f"TensorFlow version: {tf.__version__}")
 print(f"NumPy version     : {np.__version__}")
 print(f"Pandas version    : {pd.__version__}")
 
-# %% [markdown]
-# ## 2. Load and Preprocess Dataset
-
-# %%
 df = pd.read_csv("dataset_final.csv", parse_dates=["date"])
 df.set_index("date", inplace=True)
 df.sort_index(inplace=True)
@@ -58,66 +36,36 @@ print(f"\nMissing values:\n{df.isnull().sum()}")
 print(f"\nData types:\n{df.dtypes}")
 df.head(10)
 
-# %% [markdown]
-# ## 3. Feature Engineering
-#
-# Create additional features to capture temporal patterns and trends:
-# 1. **Lag Features** — past values of gold price and USD/IDR
-# 2. **Rolling Window Statistics** — moving averages and rolling standard deviation
-# 3. **Percentage Change / Returns** — rate of change over different horizons
-
-# %% [markdown]
-# ### 3.1 Lag Features
-
-# %%
-# Gold price lag features
 for lag in [1, 7, 14]:
     df[f"gold_price_lag_{lag}"] = df["gold_price"].shift(lag)
 
-# USD/IDR lag features
 for lag in [1, 7]:
     df[f"usd_idr_lag_{lag}"] = df["usd_idr"].shift(lag)
 
 print("Lag features created:")
 print([col for col in df.columns if "lag" in col])
 
-# %% [markdown]
-# ### 3.2 Rolling Window Statistics (Moving Average & Standard Deviation)
-
-# %%
-# Gold price rolling statistics
 for window in [7, 14, 30]:
     df[f"gold_price_ma_{window}"] = df["gold_price"].rolling(window=window).mean()
 
 for window in [7, 14]:
     df[f"gold_price_std_{window}"] = df["gold_price"].rolling(window=window).std()
 
-# USD/IDR rolling statistics
 df["usd_idr_ma_7"] = df["usd_idr"].rolling(window=7).mean()
 df["usd_idr_std_7"] = df["usd_idr"].rolling(window=7).std()
 
 print("Rolling features created:")
 print([col for col in df.columns if "ma_" in col or "std_" in col])
 
-# %% [markdown]
-# ### 3.3 Percentage Change / Returns
-
-# %%
-# Gold price percentage change
 for period in [1, 7]:
     df[f"gold_price_pct_{period}"] = df["gold_price"].pct_change(periods=period)
 
-# USD/IDR percentage change
 for period in [1, 7]:
     df[f"usd_idr_pct_{period}"] = df["usd_idr"].pct_change(periods=period)
 
 print("Percentage change features created:")
 print([col for col in df.columns if "pct_" in col])
 
-# %% [markdown]
-# ### 3.4 Drop NaN Rows (from lag/rolling operations)
-
-# %%
 rows_before = len(df)
 df.dropna(inplace=True)
 rows_after = len(df)
@@ -128,15 +76,10 @@ print(f"Rows dropped: {rows_before - rows_after:,}")
 print(f"\nRemaining NaN values: {df.isnull().sum().sum()}")
 print(f"Date range: {df.index.min()} → {df.index.max()}")
 
-# %% [markdown]
-# ### 3.5 Feature Overview & Correlation Heatmap
-
-# %%
 print(f"Total features available: {len(df.columns) - 1}")
 print(f"Columns: {list(df.columns)}\n")
 df.describe().round(4)
 
-# %%
 fig, ax = plt.subplots(figsize=(16, 12))
 corr = df.corr()
 mask = np.triu(np.ones_like(corr, dtype=bool))
@@ -158,24 +101,17 @@ ax.set_title(
 plt.tight_layout()
 plt.show()
 
-# %% [markdown]
-# ## 4. Define Feature and Target Variables
-
-# %%
 TARGET = "gold_price"
 
 FEATURES = [
-    # Original features
     "usd_idr",
     "inflation",
     "interest_rate",
-    # Lag features
     "gold_price_lag_1",
     "gold_price_lag_7",
     "gold_price_lag_14",
     "usd_idr_lag_1",
     "usd_idr_lag_7",
-    # Rolling statistics
     "gold_price_ma_7",
     "gold_price_ma_14",
     "gold_price_ma_30",
@@ -183,7 +119,6 @@ FEATURES = [
     "gold_price_std_14",
     "usd_idr_ma_7",
     "usd_idr_std_7",
-    # Percentage changes
     "gold_price_pct_1",
     "gold_price_pct_7",
     "usd_idr_pct_1",
@@ -199,12 +134,6 @@ print(f"\nFeature list ({len(FEATURES)} total):")
 for i, f in enumerate(FEATURES, 1):
     print(f"  {i:2d}. {f}")
 
-# %% [markdown]
-# ## 5. Perform Time-Based Splitting (70:30, 80:20, 90:10)
-#
-# Define train/test splits **before** scaling to establish split indices for each ratio.
-
-# %%
 SPLIT_RATIOS = {
     "70:30": 0.70,
     "80:20": 0.80,
@@ -235,12 +164,6 @@ for name, ratio in SPLIT_RATIOS.items():
 
 print(f"\nTotal samples: {n_samples:,}")
 
-# %% [markdown]
-# ## 6. Normalize Data Using MinMaxScaler
-#
-# Fit scalers **only on training data** for each split ratio, then transform both train and test sets using the respective training scalers. This prevents data leakage and applies consistent scaling.
-
-# %%
 scalers = {}
 
 for split_name in SPLIT_RATIOS.keys():
@@ -283,12 +206,7 @@ for split_name in SPLIT_RATIOS.keys():
         f"  y_test_scaled range:  [{y_test_scaled.min():.4f}, {y_test_scaled.max():.4f}]"
     )
 
-# %% [markdown]
-# ## 7. Create Sequences for Time Series Input
-
-# %%
 LOOKBACK = 60
-
 
 def create_sequences(X, y, lookback):
     Xs, ys = [], []
@@ -296,7 +214,6 @@ def create_sequences(X, y, lookback):
         Xs.append(X[i - lookback : i])
         ys.append(y[i, 0])
     return np.array(Xs), np.array(ys)
-
 
 for split_name in SPLIT_RATIOS.keys():
     data = splits[split_name]
@@ -325,29 +242,16 @@ for split_name in SPLIT_RATIOS.keys():
     print(f"  y_train_seq: {y_train_seq.shape}")
     print(f"  y_test_seq:  {y_test_seq.shape}\n")
 
-# %% [markdown]
-# ## 8. Define Hyperparameter Search Space
-#
-# We perform a **grid search** over the following hyperparameters using TimeSeriesSplit cross-validation on the training set. The best configuration is selected based on the lowest average validation loss.
-#
-# | Hyperparameter   | Search Space          |
-# |------------------|-----------------------|
-# | Units (per layer)| 64, 128, 256          |
-# | Dropout Rate     | 0.0, 0.05, 0.1        |
-# | Learning Rate    | 0.0001, 0.0005, 0.001 |
-
-# %%
 PARAM_GRID = {
     "units": [64, 128, 256],
     "dropout_rate": [0.0, 0.05, 0.1],
     "learning_rate": [0.0001, 0.0005, 0.001],
 }
 
-# Generate all combinations
 param_keys = list(PARAM_GRID.keys())
 param_combos = list(itertools.product(*PARAM_GRID.values()))
 
-print(f"Hyperparameter search space:")
+print("Hyperparameter search space:")
 for key, values in PARAM_GRID.items():
     print(f"  {key}: {values}")
 print(f"\nTotal combinations per model per split: {len(param_combos)}")
@@ -355,11 +259,6 @@ print(
     f"Total tuning runs: {len(param_combos)} × 2 models × 3 splits = {len(param_combos) * 6}"
 )
 
-# %% [markdown]
-# ## 9. Build LSTM Model Architecture (Parameterized)
-
-
-# %%
 def build_lstm(input_shape, units=128, dropout_rate=0.0, learning_rate=0.001):
     model = Sequential(
         [
@@ -374,16 +273,10 @@ def build_lstm(input_shape, units=128, dropout_rate=0.0, learning_rate=0.001):
     model.compile(optimizer=Adam(learning_rate=learning_rate), loss="mse")
     return model
 
-
 _tmp = build_lstm((LOOKBACK, len(FEATURES)))
 _tmp.summary()
 del _tmp
 
-# %% [markdown]
-# ## 10. Build GRU Model Architecture (Parameterized)
-
-
-# %%
 def build_gru(input_shape, units=128, dropout_rate=0.0, learning_rate=0.001):
     model = Sequential(
         [
@@ -398,25 +291,16 @@ def build_gru(input_shape, units=128, dropout_rate=0.0, learning_rate=0.001):
     model.compile(optimizer=Adam(learning_rate=learning_rate), loss="mse")
     return model
 
-
 _tmp = build_gru((LOOKBACK, len(FEATURES)))
 _tmp.summary()
 del _tmp
 
-# %% [markdown]
-# ## 11. Hyperparameter Tuning Function
-#
-# For each model type and split ratio, iterate through all hyperparameter combinations. Each configuration is evaluated using **TimeSeriesSplit** (3-fold) cross-validation on the training set with early stopping. The best configuration is selected by lowest average validation loss.
-
-# %%
-TUNING_EPOCHS = 50  # Reduced epochs for tuning phase
+TUNING_EPOCHS = 50
 TUNING_BATCH_SIZE = 32
-TUNING_PATIENCE = 5  # Faster early stopping during tuning
-TUNING_CV_SPLITS = 3  # TimeSeriesSplit folds for tuning
-
+TUNING_PATIENCE = 5
+TUNING_CV_SPLITS = 3
 
 def tune_hyperparameters(model_builder, split_name, model_name):
-    """Grid search over hyperparameter combinations using TimeSeriesSplit CV."""
     data = splits[split_name]
     X_train_seq = data["X_train_seq"]
     y_train_seq = data["y_train_seq"]
@@ -488,13 +372,8 @@ def tune_hyperparameters(model_builder, split_name, model_name):
 
     return best_params, pd.DataFrame(tuning_log)
 
-
 print("Tuning function defined.")
 
-# %% [markdown]
-# ## 12. Run Hyperparameter Tuning for All Model-Split Combinations
-
-# %%
 best_hyperparams = {}
 tuning_logs = {}
 
@@ -513,10 +392,6 @@ for model_name, model_builder in [("LSTM", build_lstm), ("GRU", build_gru)]:
         best_hyperparams[key] = best_params
         tuning_logs[key] = log_df
 
-# %% [markdown]
-# ### 12.1 Hyperparameter Tuning Summary
-
-# %%
 hp_summary_rows = []
 for (model_name, split_name), params in best_hyperparams.items():
     hp_summary_rows.append(
@@ -535,29 +410,16 @@ print("  BEST HYPERPARAMETERS PER MODEL-SPLIT COMBINATION")
 print("=" * 65)
 df_hp_summary
 
-# %% [markdown]
-# ## 13. Helper: Training & Plotting Functions
-#
-# Reusable utilities for training a model **with the best hyperparameters** found during tuning, using `TimeSeriesSplit` validation and plotting results.
-
-
-# %%
 def calc_rmse(y_true, y_pred):
-    """Root Mean Squared Error on original scale."""
     return np.sqrt(mean_squared_error(y_true, y_pred))
 
-
 def calc_mape(y_true, y_pred):
-    """Mean Absolute Percentage Error (×100 → %)."""
     return mean_absolute_percentage_error(y_true, y_pred) * 100
-
 
 EPOCHS = 200
 BATCH_SIZE = 32
 
-
 def train_and_evaluate(model_builder, split_name, model_name):
-    """Train with best hyperparameters and evaluate on test set."""
     data = splits[split_name]
     X_train_seq = data["X_train_seq"]
     X_test_seq = data["X_test_seq"]
@@ -565,11 +427,9 @@ def train_and_evaluate(model_builder, split_name, model_name):
     y_test_seq = data["y_test_seq"]
     scaler_y = scalers[split_name]["scaler_y"]
 
-    # Retrieve best hyperparameters from tuning
     key = (model_name, split_name)
     params = best_hyperparams[key]
 
-    # Use last fold of TimeSeriesSplit for validation during final training
     tscv = TimeSeriesSplit(n_splits=5)
     for train_idx, val_idx in tscv.split(X_train_seq):
         pass
@@ -628,7 +488,6 @@ def train_and_evaluate(model_builder, split_name, model_name):
         "best_params": params,
     }
 
-
 def plot_loss(history, model_name, split_name):
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(history.history["loss"], label="Training Loss")
@@ -640,7 +499,6 @@ def plot_loss(history, model_name, split_name):
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.show()
-
 
 def plot_prediction(y_true, y_pred, model_name, split_name):
     fig, ax = plt.subplots(figsize=(14, 5))
@@ -654,75 +512,44 @@ def plot_prediction(y_true, y_pred, model_name, split_name):
     plt.tight_layout()
     plt.show()
 
-
 print("Helper functions defined.")
 
-# %% [markdown]
-# ## 14. Train and Predict — LSTM with 70:30 Split
-
-# %%
 results_lstm_70 = train_and_evaluate(build_lstm, "70:30", "LSTM")
 plot_loss(results_lstm_70["history"], "LSTM", "70:30")
 plot_prediction(
     results_lstm_70["y_test_inv"], results_lstm_70["y_pred_inv"], "LSTM", "70:30"
 )
 
-# %% [markdown]
-# ## 15. Train and Predict — LSTM with 80:20 Split
-
-# %%
 results_lstm_80 = train_and_evaluate(build_lstm, "80:20", "LSTM")
 plot_loss(results_lstm_80["history"], "LSTM", "80:20")
 plot_prediction(
     results_lstm_80["y_test_inv"], results_lstm_80["y_pred_inv"], "LSTM", "80:20"
 )
 
-# %% [markdown]
-# ## 16. Train and Predict — LSTM with 90:10 Split
-
-# %%
 results_lstm_90 = train_and_evaluate(build_lstm, "90:10", "LSTM")
 plot_loss(results_lstm_90["history"], "LSTM", "90:10")
 plot_prediction(
     results_lstm_90["y_test_inv"], results_lstm_90["y_pred_inv"], "LSTM", "90:10"
 )
 
-# %% [markdown]
-# ## 17. Train and Predict — GRU with 70:30 Split
-
-# %%
 results_gru_70 = train_and_evaluate(build_gru, "70:30", "GRU")
 plot_loss(results_gru_70["history"], "GRU", "70:30")
 plot_prediction(
     results_gru_70["y_test_inv"], results_gru_70["y_pred_inv"], "GRU", "70:30"
 )
 
-# %% [markdown]
-# ## 18. Train and Predict — GRU with 80:20 Split
-
-# %%
 results_gru_80 = train_and_evaluate(build_gru, "80:20", "GRU")
 plot_loss(results_gru_80["history"], "GRU", "80:20")
 plot_prediction(
     results_gru_80["y_test_inv"], results_gru_80["y_pred_inv"], "GRU", "80:20"
 )
 
-# %% [markdown]
-# ## 19. Train and Predict — GRU with 90:10 Split
-
-# %%
 results_gru_90 = train_and_evaluate(build_gru, "90:10", "GRU")
 plot_loss(results_gru_90["history"], "GRU", "90:10")
 plot_prediction(
     results_gru_90["y_test_inv"], results_gru_90["y_pred_inv"], "GRU", "90:10"
 )
 
-# %% [markdown]
-# ## 20. Evaluate Models Using RMSE and MAPE
-#
-# Compile all 6 model-split combinations and compute RMSE (Root Mean Squared Error) and MAPE (Mean Absolute Percentage Error) on the **original scale** (inverse-transformed predictions).
-
-# %%
 all_results = {
     ("LSTM", "70:30"): results_lstm_70,
     ("LSTM", "80:20"): results_lstm_80,
@@ -753,12 +580,6 @@ print("EVALUATION SUMMARY — RMSE & MAPE (with Best Hyperparameters)")
 print("=" * 75)
 df_eval
 
-# %% [markdown]
-# ## 21. Compare Results Across All Split Schemes
-#
-# Side-by-side bar charts comparing RMSE and MAPE for LSTM vs GRU across the three split ratios.
-
-# %%
 split_labels = ["70:30", "80:20", "90:10"]
 x = np.arange(len(split_labels))
 width = 0.30
@@ -833,7 +654,6 @@ for bar in bars2:
 plt.tight_layout()
 plt.show()
 
-# %%
 best_rmse_row = df_eval.loc[df_eval["RMSE (IDR)"].idxmin()]
 best_mape_row = df_eval.loc[df_eval["MAPE (%)"].idxmin()]
 
@@ -855,13 +675,6 @@ print("=" * 75)
 print("\n\nFull Evaluation Table:")
 print(df_eval.to_string(index=False, float_format=lambda x: f"{x:,.4f}"))
 
-# %% [markdown]
-# ## 21.1 Prediction vs Actual (Scatter) and Model Comparison Lines
-#
-# Scatter plots show how close predictions are to actual values. Line chart compares actual vs LSTM/GRU predictions on the same test set split.
-
-# %%
-# Compare on the same split (use best MAPE split by default)
 compare_split = best_mape_row["Split"] if "best_mape_row" in globals() else "90:10"
 lstm_res = all_results[("LSTM", compare_split)]
 gru_res = all_results[("GRU", compare_split)]
@@ -870,7 +683,6 @@ y_true = gru_res["y_test_inv"]
 y_pred_lstm = lstm_res["y_pred_inv"]
 y_pred_gru = gru_res["y_pred_inv"]
 
-# Scatter: actual vs predicted
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 min_val = min(y_true.min(), y_pred_lstm.min(), y_pred_gru.min())
 max_val = max(y_true.max(), y_pred_lstm.max(), y_pred_gru.max())
@@ -892,7 +704,6 @@ axes[1].grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()
 
-# Line chart: actual vs predictions
 fig, ax = plt.subplots(figsize=(14, 5))
 ax.plot(y_true, label="Actual", color="black", linewidth=1.2)
 ax.plot(y_pred_lstm, label="LSTM Pred", color="#2196F3", linestyle="--", linewidth=1.1)
@@ -905,11 +716,9 @@ ax.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()
 
-# %%
 import os
 import joblib
 
-# Choose the single best model (lowest MAPE by default)
 best_row = best_mape_row if "best_mape_row" in globals() else None
 if best_row is None:
     raise ValueError("best_mape_row is not defined. Run evaluation first.")
@@ -919,18 +728,15 @@ best_split = best_row["Split"]
 
 best_result = all_results[(best_model_name, best_split)]
 
-# Output directory
 export_dir = "saved_models"
 os.makedirs(export_dir, exist_ok=True)
 
-# Save Keras model
 model_path = os.path.join(
     export_dir,
     f"{best_model_name.lower()}_{best_split.replace(':', '-')}.keras",
 )
 best_result["model"].save(model_path)
 
-# Save scalers and metadata
 scalers_path = os.path.join(
     export_dir, f"scalers_{best_split.replace(':', '-')}.joblib"
 )
@@ -954,12 +760,6 @@ print(" -", model_path)
 print(" -", scalers_path)
 print(" -", meta_path)
 
-# %% [markdown]
-# ## 22. Hyperparameter Tuning Details
-#
-# Display the full tuning log for each model-split combination, showing all hyperparameter combinations tested and their average validation losses.
-
-# %%
 for (model_name, split_name), log_df in tuning_logs.items():
     print(f"\n{'='*65}")
     print(f"  {model_name} — Split {split_name} — Tuning Log")
@@ -970,10 +770,6 @@ for (model_name, split_name), log_df in tuning_logs.items():
     print(log_sorted.to_string(float_format=lambda x: f"{x:.6f}"))
     print()
 
-# %% [markdown]
-# ### 22.1 Visualize Tuning Results — Heatmaps
-
-# %%
 fig, axes = plt.subplots(2, 3, figsize=(18, 10))
 
 for idx, ((model_name, split_name), log_df) in enumerate(tuning_logs.items()):
@@ -981,7 +777,6 @@ for idx, ((model_name, split_name), log_df) in enumerate(tuning_logs.items()):
     col = idx % 3
     ax = axes[row, col]
 
-    # Aggregate: for each (units, dropout_rate), average over learning rates
     pivot = log_df.groupby(["units", "dropout_rate"])["avg_val_loss"].mean().unstack()
     sns.heatmap(
         pivot,

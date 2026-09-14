@@ -14,8 +14,8 @@ import { formatRupiah, formatChartDate } from '../utils/formatters';
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur border border-slate-200 dark:border-slate-700 p-3 rounded-lg shadow-xl text-xs space-y-1">
-        <p className="font-bold border-b border-slate-200 dark:border-slate-700 pb-1 mb-1">{formatChartDate(label)}</p>
+      <div className="bg-white/90 backdrop-blur border border-slate-200 p-3 rounded-lg shadow-xl text-xs space-y-1">
+        <p className="font-bold border-b border-slate-200 pb-1 mb-1">{formatChartDate(label)}</p>
         {payload.map((entry) => (
           <p key={entry.name} className="flex justify-between gap-4">
             <span>{entry.name}:</span>
@@ -369,10 +369,10 @@ export default function Predict() {
   };
 
   const modalNoticeClassName = uploadNotice?.type === 'error'
-    ? 'border-rose-200 bg-rose-50/80 text-rose-700 dark:border-rose-800/60 dark:bg-rose-900/20 dark:text-rose-200'
+    ? 'border-rose-200 bg-rose-50/80 text-rose-700 '
     : uploadNotice?.type === 'success'
-      ? 'border-emerald-200 bg-emerald-50/80 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-200'
-      : 'border-primary/30 bg-primary/10 text-amber-700 dark:border-primary/40 dark:bg-primary/20 dark:text-amber-200';
+      ? 'border-emerald-200 bg-emerald-50/80 text-emerald-700 '
+      : 'border-primary/30 bg-primary/10 text-amber-700 ';
 
   return (
     <div className="p-8">
@@ -388,17 +388,16 @@ export default function Predict() {
         }}
       />
 
-      {/* Header */}
       <header className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-slate-900 dark:text-white">Prediksi Harga Emas</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Gunakan model Deep Learning untuk memproyeksikan pergerakan harga.
+          <h1 className="text-3xl font-serif font-bold text-slate-900 ">Prediksi Harga Emas</h1>
+          <p className="text-slate-500 mt-1">
+            Gunakan model GRU untuk memproyeksikan harga emas.
           </p>
         </div>
         {dataLoaded && (
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-sm text-slate-500 bg-white dark:bg-slate-800 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+            <div className="flex items-center gap-2 text-sm text-slate-500 bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm">
               <CheckCircle className="w-4 h-4 text-emerald-500" />
               <span className="font-medium truncate max-w-[200px]">{fileName}</span>
             </div>
@@ -414,7 +413,7 @@ export default function Predict() {
                 setFileName('');
               }}
               title="Reset Data"
-              className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition border border-transparent hover:border-rose-100 dark:hover:border-rose-900/50"
+              className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition border border-transparent hover:border-rose-100 "
             >
               <X className="w-4 h-4" />
             </button>
@@ -422,40 +421,36 @@ export default function Predict() {
         )}
       </header>
 
-      {/* Top Grid: Config */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        {/* Load Dataset */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
           <h3 className="font-bold mb-4 flex items-center">
             <Upload className="w-5 h-5 text-primary mr-2" />
             Load Dataset
           </h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-            Pilih sumber data historis yang akan digunakan untuk pelatihan model (Format CSV).
+          <p className="text-sm text-slate-500 mb-6">
+            Pilih data historis untuk membuat prediksi (format CSV).
           </p>
           <div className="grid grid-cols-2 gap-4">
-            {/* CSV Upload */}
             <button
               type="button"
               onClick={openUploadModal}
               className={`relative flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-xl cursor-pointer transition group ${
                 dataSource === 'csv'
                   ? 'border-primary bg-primary/5'
-                  : 'border-slate-200 dark:border-slate-700 hover:border-primary/30 hover:bg-primary/5'
+                  : 'border-slate-200 hover:border-primary/30 hover:bg-primary/5'
               }`}
             >
               <Upload className={`w-8 h-8 mb-3 transition ${dataSource === 'csv' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`} />
               <span className="text-sm font-medium">Dataset CSV</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 mt-1 text-center">Klik untuk buka popup upload</span>
+              <span className="text-xs text-slate-500 mt-1 text-center">Klik untuk buka popup upload</span>
             </button>
 
-            {/* Sample Data */}
             <button
               onClick={handleSampleData}
               className={`relative flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-xl cursor-pointer transition group ${
                 dataSource === 'sample'
                   ? 'border-primary bg-primary/5'
-                  : 'border-slate-200 dark:border-slate-700 hover:border-primary/30 hover:bg-primary/5'
+                  : 'border-slate-200 hover:border-primary/30 hover:bg-primary/5'
               }`}
             >
               <Database className={`w-8 h-8 mb-3 transition ${dataSource === 'sample' ? 'text-primary' : 'text-slate-400 group-hover:text-primary'}`} />
@@ -464,20 +459,19 @@ export default function Predict() {
           </div>
         </div>
 
-        {/* Generate Predictions */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
           <div>
             <h3 className="font-bold mb-4 flex items-center">
               <Sparkles className="w-5 h-5 text-primary mr-2" />
               Parameter Prediksi
             </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+            <p className="text-sm text-slate-500 mb-6">
               Tentukan jumlah interval hari ke depan yang ingin diprediksi oleh model GRU.
             </p>
             <div className="space-y-4 mb-8">
               <div className="flex justify-between items-center">
                 <label className="text-sm font-medium">Jumlah Hari</label>
-                <span className="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg">{predDays} Hari</span>
+                <span className="px-3 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg">{predDays} Hari</span>
               </div>
               <div className="relative pt-1">
                 <input
@@ -486,7 +480,7 @@ export default function Predict() {
                   max="90"
                   value={predDays}
                   onChange={(e) => setPredDays(Number(e.target.value))}
-                  className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                 />
               </div>
             </div>
@@ -498,10 +492,8 @@ export default function Predict() {
             disabled={!dataLoaded || isPredictionActive}
             className={`w-full py-4 relative overflow-hidden text-white font-bold rounded-xl transition-all duration-500 flex items-center justify-center gap-2 ${!dataLoaded || isPredictionActive ? 'cursor-not-allowed shadow-none' : 'shadow-[0_8px_30px_rgb(212,175,55,0.2)] hover:shadow-[0_8px_40px_rgb(212,175,55,0.4)]'}`}
           >
-            {/* Structural Backdrop Shift */}
-            <div className={`absolute inset-0 transition-colors duration-500 ${!dataLoaded && !isPredictionActive ? 'bg-slate-200 dark:bg-slate-700' : 'bg-primary'}`} />
+            <div className={`absolute inset-0 transition-colors duration-500 ${!dataLoaded && !isPredictionActive ? 'bg-slate-200 ' : 'bg-primary'}`} />
 
-            {/* Glowing inner pulse - warm amber */}
             {isPredictionActive && (
                 <Motion.div
                     className="absolute inset-0 bg-gradient-to-tr from-amber-600/0 via-amber-400/60 to-yellow-300/0 mix-blend-overlay pointer-events-none z-10"
@@ -511,7 +503,6 @@ export default function Predict() {
                 />
             )}
 
-            {/* Continuous Flowing Gold Gradient Border (Active) */}
             {isPredictionActive && (
                  <div className="absolute inset-[-150%] pointer-events-none z-0">
                     <Motion.div
@@ -522,10 +513,8 @@ export default function Predict() {
                  </div>
             )}
 
-            {/* Inner Mask (creates the border effect if active or transparent if idle) */}
             <div className={`absolute inset-[2px] rounded-[10px] pointer-events-none z-0 transition-all duration-500 ${isPredictionActive ? 'bg-primary border border-white/10 shadow-[inset_0_0_20px_rgba(0,0,0,0.2)]' : 'bg-transparent'}`} />
 
-            {/* Ripples Element */}
             <div className="absolute inset-0 z-20 overflow-hidden pointer-events-none rounded-xl">
               <AnimatePresence>
                 {ripples.map((rip) => (
@@ -535,7 +524,7 @@ export default function Predict() {
                     animate={{ scale: 4, opacity: 0 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.8, ease: [0.19, 1, 0.22, 1] }}
-                    className="absolute bg-white/40 dark:bg-yellow-200/50 rounded-full"
+                    className="absolute bg-white/40 rounded-full"
                     style={{ left: rip.x, top: rip.y, width: 100, height: 100, transform: 'translate(-50%, -50%)' }}
                     onAnimationComplete={() => setRipples((prev) => prev.filter((r) => r.id !== rip.id))}
                   />
@@ -543,7 +532,6 @@ export default function Predict() {
               </AnimatePresence>
             </div>
 
-            {/* Content */}
             <Motion.div
                layout
                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
@@ -565,22 +553,20 @@ export default function Predict() {
         </div>
       </div>
 
-      {/* Chart Section */}
-      <section className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm mb-8 relative overflow-hidden">
-        {/* Glassmorphism Loader Banner Overlay */}
+      <section className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm mb-8 relative overflow-hidden">
         <AnimatePresence>
           {isPredictionActive && (
             <Motion.div
               initial={{ opacity: 0, backdropFilter: 'blur(0px)' }}
               animate={{ opacity: 1, backdropFilter: 'blur(8px)' }}
               exit={{ opacity: 0, backdropFilter: 'blur(0px)' }}
-              className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/30 dark:bg-slate-900/40 border border-white/20 dark:border-slate-700/20"
+              className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/30 border border-white/20 "
             >
               <Motion.div
                 initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.9, y: 20 }}
-                className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-md px-8 py-6 rounded-2xl shadow-xl border border-white/50 dark:border-slate-700/50 flex flex-col items-center max-w-sm text-center"
+                className="bg-white/80 backdrop-blur-md px-8 py-6 rounded-2xl shadow-xl border border-white/50 flex flex-col items-center max-w-sm text-center"
               >
                 <Motion.div
                   animate={{ rotate: 360 }}
@@ -588,7 +574,7 @@ export default function Predict() {
                   className="w-14 h-14 rounded-full border-t-2 border-r-2 border-primary mb-4"
                 />
                 <h3 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-amber-600 mb-2">Mengolah Prediksi...</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Deep learning model GRU sedang mensintesis pola historis untuk proyeksi harga.</p>
+                <p className="text-sm text-slate-500 ">Model GRU sedang menganalisis data historis.</p>
               </Motion.div>
             </Motion.div>
           )}
@@ -599,7 +585,7 @@ export default function Predict() {
               <BarChart3 className="w-5 h-5 text-primary" />
               Proyeksi Harga Emas
             </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Visualisasi perbandingan aktual dan prediksi GRU.</p>
+            <p className="text-sm text-slate-500 mt-1">Visualisasi perbandingan aktual dan prediksi GRU.</p>
           </div>
           <div className="flex items-center gap-4">
              <div className="flex items-center gap-3">
@@ -608,7 +594,7 @@ export default function Predict() {
                 <span className="text-xs font-medium">GRU Prediksi</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-slate-300 dark:bg-slate-600" />
+                <span className="w-3 h-3 rounded-full bg-slate-300 " />
                 <span className="text-xs font-medium italic">Aktual</span>
               </div>
             </div>
@@ -668,29 +654,27 @@ export default function Predict() {
             </ResponsiveContainer>
           ) : (
             <div className="h-full flex items-center justify-center text-slate-400">
-              Belum ada data proyeksi. Silahkan load dataset dan generate prediksi.
+              Belum ada proyeksi. Muat dataset dan buat prediksi.
             </div>
           )}
         </div>
       </section>
 
-      {/* Bottom Grid: Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {/* Card 1 */}
         <Motion.div
           animate={isPredictionActive ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
           transition={{ duration: 2, repeat: isPredictionActive ? Infinity : 0, ease: 'easeInOut' }}
-          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredictionActive ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
+          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredictionActive ? 'bg-primary/5 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white border-slate-100 shadow-sm hover:shadow-md'}`}
         >
-          {isPredictionActive && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
+          {isPredictionActive && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 backdrop-blur-md pointer-events-none" />}
           <div className="relative z-10">
-            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredictionActive ? 'bg-primary/20 dark:bg-primary/30' : 'bg-yellow-50 dark:bg-yellow-900/20'}`}>
-              <TrendingDown className={`w-5 h-5 transition-colors ${isPredictionActive ? 'text-amber-600 dark:text-amber-400' : 'text-primary'} rotate-180`} />
+            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredictionActive ? 'bg-primary/20 ' : 'bg-yellow-50 '}`}>
+              <TrendingDown className={`w-5 h-5 transition-colors ${isPredictionActive ? 'text-amber-600 ' : 'text-primary'} rotate-180`} />
             </div>
-            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Prediksi Hari ke-{predDays}</p>
+            <p className="text-slate-500 text-sm font-medium">Prediksi Hari ke-{predDays}</p>
             <h3 className="text-2xl font-bold mt-1">
               {isPredictionActive ? (
-                  <Motion.div className="h-8 w-2/3 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
+                  <Motion.div className="h-8 w-2/3 bg-slate-200/80 rounded mt-1 animate-pulse" />
               ) : (
                   chartData.length > 0 ? formatRupiah(chartData[chartData.length - 1].predicted) : '—'
               )}
@@ -698,21 +682,20 @@ export default function Predict() {
           </div>
         </Motion.div>
 
-        {/* Card 2 */}
         <Motion.div
           animate={isPredictionActive ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
           transition={{ duration: 2, delay: 0.2, repeat: isPredictionActive ? Infinity : 0, ease: 'easeInOut' }}
-          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredictionActive ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
+          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredictionActive ? 'bg-primary/5 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white border-slate-100 shadow-sm hover:shadow-md'}`}
         >
-          {isPredictionActive && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
+          {isPredictionActive && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 backdrop-blur-md pointer-events-none" />}
           <div className="relative z-10">
-            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredictionActive ? 'bg-primary/20 dark:bg-primary/30' : 'bg-indigo-50 dark:bg-indigo-900/20'}`}>
-              <ShieldCheck className={`w-5 h-5 transition-colors ${isPredictionActive ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-500'}`} />
+            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredictionActive ? 'bg-primary/20 ' : 'bg-indigo-50 '}`}>
+              <ShieldCheck className={`w-5 h-5 transition-colors ${isPredictionActive ? 'text-amber-600 ' : 'text-indigo-500'}`} />
             </div>
-            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Konfiden Skor</p>
+            <p className="text-slate-500 text-sm font-medium">Skor Keyakinan</p>
             <h3 className="text-2xl font-bold mt-1">
               {isPredictionActive ? (
-                  <Motion.div className="h-8 w-1/2 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
+                  <Motion.div className="h-8 w-1/2 bg-slate-200/80 rounded mt-1 animate-pulse" />
               ) : (
                   metrics ? `${metrics.confidence_score?.toFixed(1)}%` : '—'
               )}
@@ -720,21 +703,20 @@ export default function Predict() {
           </div>
         </Motion.div>
 
-        {/* Card 3 */}
         <Motion.div
           animate={isPredictionActive ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
           transition={{ duration: 2, delay: 0.4, repeat: isPredictionActive ? Infinity : 0, ease: 'easeInOut' }}
-          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredictionActive ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
+          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredictionActive ? 'bg-primary/5 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white border-slate-100 shadow-sm hover:shadow-md'}`}
         >
-          {isPredictionActive && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
+          {isPredictionActive && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 backdrop-blur-md pointer-events-none" />}
           <div className="relative z-10">
-            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredictionActive ? 'bg-primary/20 dark:bg-primary/30' : 'bg-emerald-50 dark:bg-emerald-900/20'}`}>
-              <CheckCircle className={`w-5 h-5 transition-colors ${isPredictionActive ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-500'}`} />
+            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredictionActive ? 'bg-primary/20 ' : 'bg-emerald-50 '}`}>
+              <CheckCircle className={`w-5 h-5 transition-colors ${isPredictionActive ? 'text-amber-600 ' : 'text-emerald-500'}`} />
             </div>
-            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Akurasi Model (MAPE)</p>
+            <p className="text-slate-500 text-sm font-medium">Akurasi Model (MAPE)</p>
             <h3 className="text-2xl font-bold mt-1">
               {isPredictionActive ? (
-                  <Motion.div className="h-8 w-1/2 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
+                  <Motion.div className="h-8 w-1/2 bg-slate-200/80 rounded mt-1 animate-pulse" />
               ) : (
                   metrics ? `${metrics.mape?.toFixed(1)}%` : '—'
               )}
@@ -742,21 +724,20 @@ export default function Predict() {
           </div>
         </Motion.div>
 
-        {/* Card 4 */}
         <Motion.div
           animate={isPredictionActive ? { opacity: [0.6, 1, 0.6], scale: [0.98, 1, 0.98] } : { opacity: 1, scale: 1 }}
           transition={{ duration: 2, delay: 0.6, repeat: isPredictionActive ? Infinity : 0, ease: 'easeInOut' }}
-          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredictionActive ? 'bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md'}`}
+          className={`relative overflow-hidden p-6 rounded-2xl border transition-all duration-500 ${isPredictionActive ? 'bg-primary/5 border-primary/20 shadow-[0_0_15px_rgba(212,175,55,0.15)] backdrop-blur-md' : 'bg-white border-slate-100 shadow-sm hover:shadow-md'}`}
         >
-          {isPredictionActive && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-800/40 dark:to-slate-900/10 backdrop-blur-md pointer-events-none" />}
+          {isPredictionActive && <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/10 backdrop-blur-md pointer-events-none" />}
           <div className="relative z-10">
-            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredictionActive ? 'bg-primary/20 dark:bg-primary/30' : 'bg-rose-50 dark:bg-rose-900/20'}`}>
-              <Database className={`w-5 h-5 transition-colors ${isPredictionActive ? 'text-amber-600 dark:text-amber-400' : 'text-rose-500'}`} />
+            <div className={`p-3 rounded-xl w-fit mb-4 transition-colors ${isPredictionActive ? 'bg-primary/20 ' : 'bg-rose-50 '}`}>
+              <Database className={`w-5 h-5 transition-colors ${isPredictionActive ? 'text-amber-600 ' : 'text-rose-500'}`} />
             </div>
-            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Status Data</p>
+            <p className="text-slate-500 text-sm font-medium">Status Data</p>
             <h3 className="text-2xl font-bold mt-1">
               {isPredictionActive ? (
-                  <Motion.div className="h-8 w-2/3 bg-slate-200/80 dark:bg-slate-700/80 rounded mt-1 animate-pulse" />
+                  <Motion.div className="h-8 w-2/3 bg-slate-200/80 rounded mt-1 animate-pulse" />
               ) : (
                   dataLoaded ? "Tersedia" : "Belum Ada"
               )}
@@ -782,19 +763,19 @@ export default function Predict() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 18, scale: 0.98 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="mx-auto w-full max-w-4xl rounded-3xl border border-primary/20 bg-white/95 dark:bg-slate-900/95 shadow-[0_30px_80px_rgba(15,23,42,0.35)] backdrop-blur"
+              className="mx-auto w-full max-w-4xl rounded-3xl border border-primary/20 bg-white/95 shadow-[0_30px_80px_rgba(15,23,42,0.35)] backdrop-blur"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-slate-200/70 dark:border-slate-700/70">
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-slate-200/70 ">
                 <div>
                   <p className="text-xs uppercase tracking-[0.2em] text-primary font-semibold mb-2">Data Intake</p>
-                  <h2 className="text-2xl font-serif font-bold text-slate-900 dark:text-white">Upload Dataset Prediksi Emas</h2>
+                  <h2 className="text-2xl font-serif font-bold text-slate-900 ">Upload Dataset Prediksi Emas</h2>
                 </div>
                 <button
                   type="button"
                   onClick={closeUploadModal}
                   disabled={isLoading || isPrechecking}
-                  className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-rose-500 hover:border-rose-200 dark:hover:border-rose-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:text-rose-500 hover:border-rose-200 disabled:opacity-60 disabled:cursor-not-allowed"
                   aria-label="Tutup popup upload"
                 >
                   <X className="w-4 h-4" />
@@ -808,7 +789,7 @@ export default function Predict() {
                     className={`relative block rounded-2xl border-2 border-dashed p-6 text-center transition cursor-pointer ${
                       modalDragActive
                         ? 'border-primary bg-primary/10'
-                        : 'border-slate-300 dark:border-slate-700 hover:border-primary/40 hover:bg-primary/5'
+                        : 'border-slate-300 hover:border-primary/40 hover:bg-primary/5'
                     }`}
                     onDragEnter={handleModalDrag}
                     onDragLeave={handleModalDrag}
@@ -826,8 +807,8 @@ export default function Predict() {
                       }}
                     />
                     <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 text-primary" />
-                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Drop file CSV di sini atau klik untuk memilih</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">File akan divalidasi otomatis sebelum dikirim ke server.</p>
+                    <p className="text-sm font-semibold text-slate-800 ">Drop file CSV di sini atau klik untuk memilih</p>
+                    <p className="text-xs text-slate-500 mt-2">File akan divalidasi otomatis sebelum dikirim ke server.</p>
                     {(isLoading || isPrechecking) && (
                       <p className="text-xs mt-3 text-primary font-medium">Memproses dataset...</p>
                     )}
@@ -845,7 +826,7 @@ export default function Predict() {
                   )}
 
                   {precheckSummary && (
-                    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/70 px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-700 ">
                       <p><span className="font-semibold">Baris data:</span> {precheckSummary.rowCount}</p>
                       <p><span className="font-semibold">Status:</span> Siap dipakai untuk prediksi (minimum 60 baris terpenuhi).</p>
                     </div>
@@ -853,21 +834,21 @@ export default function Predict() {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
-                    <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-3">Kriteria Dataset CSV</h3>
-                    <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <h3 className="font-semibold text-slate-900 mb-3">Kriteria Dataset CSV</h3>
+                    <ul className="space-y-2 text-sm text-slate-600 ">
                       <li className="flex gap-2"><CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5" />Format file wajib <span className="font-semibold">.csv</span></li>
                       <li className="flex gap-2"><CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5" />Minimal <span className="font-semibold">60 baris data</span></li>
                       <li className="flex gap-2"><CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5" />Kolom wajib: <span className="font-semibold">date</span> dan <span className="font-semibold">gold_price</span></li>
                       <li className="flex gap-2"><CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5" />Kolom opsional: <span className="font-semibold">usd_idr, inflation, interest_rate</span></li>
                       <li className="flex gap-2"><CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5" />Tanggal mendukung format ISO dan gaya Indonesia</li>
                     </ul>
-                    <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Alias yang diterima backend: <span className="font-semibold">Tanggal</span> untuk tanggal, <span className="font-semibold">Harga</span> untuk harga.</p>
+                    <p className="mt-3 text-xs text-slate-500 ">Alias yang diterima backend: <span className="font-semibold">Tanggal</span> untuk tanggal, <span className="font-semibold">Harga</span> untuk harga.</p>
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-4">
-                    <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-2">Contoh CSV</h3>
-                    <pre className="text-xs leading-5 text-slate-600 dark:text-slate-300 overflow-x-auto custom-scrollbar">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <h3 className="font-semibold text-slate-900 mb-2">Contoh CSV</h3>
+                    <pre className="text-xs leading-5 text-slate-600 overflow-x-auto custom-scrollbar">
 {SAMPLE_CSV_PREVIEW.join('\n')}
                     </pre>
                   </div>

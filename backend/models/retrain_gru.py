@@ -128,7 +128,6 @@ def main():
     scaler_X = MinMaxScaler(feature_range=(0, 1))
     scaler_y = MinMaxScaler(feature_range=(0, 1))
 
-    # Fit scalers on full history for deployment robustness (regime-aware range)
     X_scaled = scaler_X.fit_transform(X)
     y_scaled = scaler_y.fit_transform(y)
 

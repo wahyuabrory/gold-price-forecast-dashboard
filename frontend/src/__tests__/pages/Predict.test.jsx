@@ -53,7 +53,7 @@ describe('Predict Page', () => {
     render(<Predict />);
 
     await waitFor(() => {
-      // Verify the component rendered without errors
+
       expect(screen.getByText(/Parameter Prediksi/i)).toBeInTheDocument();
     });
   });
@@ -138,7 +138,7 @@ describe('Predict Page', () => {
     render(<Predict />);
 
     await waitFor(() => {
-      // Just verify the button exists - framer-motion complicates the disabled state
+
       expect(screen.getByText(/Generate Prediction/i)).toBeInTheDocument();
     });
   });
@@ -164,7 +164,7 @@ describe('Predict Page', () => {
 
     render(<Predict />);
 
-    // Upload file
+
     const fileInput = screen.getByDisplayValue('');
     const file = new File(['data'], 'test.csv', { type: 'text/csv' });
     fireEvent.change(fileInput, { target: { files: [file] } });
@@ -173,11 +173,11 @@ describe('Predict Page', () => {
       expect(screen.getByRole('button', { name: /Generate Prediction/i })).not.toBeDisabled();
     });
 
-    // Update slider to 45 days
+
     const slider = screen.getByRole('slider');
     fireEvent.change(slider, { target: { value: '45' } });
 
-    // Click predict
+
     const predictButton = screen.getByRole('button', { name: /Generate Prediction/i });
     fireEvent.click(predictButton);
 
@@ -191,7 +191,7 @@ describe('Predict Page', () => {
 
     render(<Predict />);
 
-    // Upload
+
     const fileInput = screen.getByDisplayValue('');
     const file = new File(['data'], 'test.csv', { type: 'text/csv' });
     fireEvent.change(fileInput, { target: { files: [file] } });
@@ -200,7 +200,7 @@ describe('Predict Page', () => {
       expect(screen.getByRole('button', { name: /Generate Prediction/i })).not.toBeDisabled();
     });
 
-    // Predict
+
     const predictButton = screen.getByRole('button', { name: /Generate Prediction/i });
     fireEvent.click(predictButton);
 
@@ -214,7 +214,7 @@ describe('Predict Page', () => {
 
     render(<Predict />);
 
-    // Upload
+
     const fileInput = screen.getByDisplayValue('');
     const file = new File(['data'], 'test.csv', { type: 'text/csv' });
     fireEvent.change(fileInput, { target: { files: [file] } });
@@ -223,12 +223,12 @@ describe('Predict Page', () => {
       expect(screen.getByRole('button', { name: /Generate Prediction/i })).not.toBeDisabled();
     });
 
-    // Predict
+
     const predictButton = screen.getByRole('button', { name: /Generate Prediction/i });
     fireEvent.click(predictButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Konfiden Skor/i)).toBeInTheDocument();
+      expect(screen.getByText(/Skor Keyakinan/i)).toBeInTheDocument();
     });
   });
 
@@ -288,7 +288,7 @@ describe('Predict Page', () => {
     render(<Predict />);
 
     await waitFor(() => {
-      // Just verify the export button exists in the document
+
       const buttons = screen.getAllByRole('button');
       const hasExport = buttons.some(btn => btn.textContent.includes('Export'));
       expect(hasExport).toBe(true);
@@ -491,7 +491,7 @@ describe('Predict Page', () => {
       expect(screen.getByRole('button', { name: /Generate Prediction/i })).not.toBeDisabled();
     });
 
-    // Update slider to 30
+
     const slider = screen.getByRole('slider');
     fireEvent.change(slider, { target: { value: '30' } });
 
@@ -529,7 +529,7 @@ describe('Predict Page', () => {
     const predictButton = screen.getByRole('button', { name: /Generate Prediction/i });
     fireEvent.click(predictButton);
 
-    // Should show processing text
+
     expect(screen.getByText(/Memproses/i)).toBeInTheDocument();
   });
 
@@ -575,7 +575,7 @@ describe('Predict Page', () => {
     render(<Predict />);
 
     expect(screen.getByText(/Prediksi Harga Emas/i)).toBeInTheDocument();
-    expect(screen.getByText(/Gunakan model Deep Learning/i)).toBeInTheDocument();
+    expect(screen.getByText(/Gunakan model GRU/i)).toBeInTheDocument();
   });
 
   it('should display data source indicator after sample load', async () => {

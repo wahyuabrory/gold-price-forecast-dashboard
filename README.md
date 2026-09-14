@@ -1,17 +1,17 @@
-# AURUM PREDICT
+# Aurum Predict
 
-Gold price forecasting dashboard for Indonesian gold prices (IDR) using a GRU model. This is a local, single-user research tool with no authentication.
+Local dashboard for forecasting Indonesian gold prices in IDR with a GRU model. It is a single-user research tool with no authentication.
 
-## What It Does
+## Features
 
 - Upload a CSV dataset.
 - Load the built-in sample dataset.
-- Generate 1-90 day forecasts.
+- Generate forecasts for 1 to 90 days.
 - View dashboard and historical analysis.
 - Export prediction results as CSV.
-- Run a parallel demo endpoint for request benchmarking.
+- Benchmark parallel requests through the demo endpoint.
 
-## Quick Start
+## Run locally
 
 ### Backend
 
@@ -31,7 +31,7 @@ npm run dev
 
 Open `http://localhost:5173`.
 
-## Main Commands
+## Checks
 
 ```bash
 # Backend tests
@@ -45,7 +45,7 @@ npm run lint
 npm test
 ```
 
-## CSV Format
+## CSV format
 
 The app expects a CSV with at least these columns:
 
@@ -57,9 +57,9 @@ date,gold_price,usd_idr,inflation,interest_rate
 - Minimum 60 rows.
 - `date` and `gold_price` are required.
 - The built-in sample data lives in `backend/models/dataset_final.csv`.
-- The preserved root artifact is `demo_dataset.csv`.
+- Keep the root `demo_dataset.csv` artifact unchanged.
 
-## API Summary
+## API
 
 | Endpoint | Method | Purpose |
 | --- | --- | --- |
@@ -72,10 +72,4 @@ date,gold_price,usd_idr,inflation,interest_rate
 | `/api/export` | GET | Download predictions CSV |
 | `/api/dashboard` | GET | Dashboard summary |
 | `/api/historical` | GET | Historical analysis |
-| `/api/demo` | POST | Parallel execution demo |
-
-## Docs
-
-- [AGENTS.md](AGENTS.md)
-- [ARCHITECTURE.md](ARCHITECTURE.md)
-- [CONTINUITY.md](CONTINUITY.md)
+| `/api/demo` | POST | Parallel execution demo

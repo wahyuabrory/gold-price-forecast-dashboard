@@ -4,7 +4,6 @@ import unittest
 
 import pandas as pd
 
-# Ensure backend package imports work when running from repository root.
 BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
@@ -58,7 +57,6 @@ class ForecastHardeningTests(unittest.TestCase):
         predictor = GoldPredictor()
         predictor.price_range = [100.0, 200.0]
 
-        # 20% margin => upper bound should be 220
         clipped = predictor._clip_price_prediction(1000.0)
         self.assertLessEqual(clipped, 220.0)
 
@@ -87,7 +85,6 @@ class ForecastHardeningTests(unittest.TestCase):
 
         calibrated = predictor._calibrate_prediction_path(raw_predictions, observed_prices)
 
-        # Day-1 should be pulled closer to last observed price when gap is large.
         last_price = float(observed_prices.iloc[-1])
         raw_gap = abs(last_price - raw_predictions[0])
         calibrated_gap = abs(last_price - float(calibrated[0]))

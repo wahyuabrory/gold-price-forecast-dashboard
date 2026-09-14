@@ -16,7 +16,7 @@ function getBackendPort() {
       return Number.parseInt(match[1], 10)
     }
   } catch {
-    // Fall back to the historical default when the backend env file is missing.
+    return 5000
   }
 
   return 5000

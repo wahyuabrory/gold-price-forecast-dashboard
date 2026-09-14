@@ -1,33 +1,25 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:is(.dark *));
 @theme {
   --color-primary: #D4AF37;
-  --color-primary-dark: #B8860B;
-  --color-primary-light: #FFD700;
   --color-background-light: #F8FAFC;
-  --color-background-dark: #0F172A;
-  --color-card-light: #FFFFFF;
-  --color-card-dark: #1E293B;
-  --color-surface-light: #FFFFFF;
-  --color-surface-dark: #1F2937;
   --color-charcoal: #36454F;
 
   --font-sans: 'Poppins', sans-serif;
   --font-serif: 'Instrument Serif', serif;
 }
 
-/* Global Typography Adjustments */
+
 h1, .font-serif {
   font-style: italic;
 }
 
-/* Custom scrollbar */
+
 .custom-scrollbar::-webkit-scrollbar { width: 6px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: #d4af3744; border-radius: 10px; }
 
-/* Range slider styling */
+
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -46,9 +38,4 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
   border-radius: 50%;
   border: 2px solid white;
-}
-
-/* Smooth transitions for dark mode */
-body {
-  transition: background-color 0.3s, color 0.3s;
 }

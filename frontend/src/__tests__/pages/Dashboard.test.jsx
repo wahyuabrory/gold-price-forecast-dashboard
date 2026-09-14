@@ -38,7 +38,7 @@ describe('Dashboard Page', () => {
 
     render(<Dashboard />);
 
-    // While loading, should show placeholder text
+
     await waitFor(() => {
       expect(screen.queryByText(/Ringkasan Dashboard/i)).toBeInTheDocument();
     });
@@ -143,7 +143,7 @@ describe('Dashboard Page', () => {
     const button7d = screen.getByRole('button', { name: /7d/i });
     fireEvent.click(button7d);
 
-    // Verify button is now active (styling would be applied)
+
     expect(button7d).toHaveClass('text-primary');
   });
 
@@ -230,7 +230,7 @@ describe('Dashboard Page', () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      // Check that price is displayed (formatting depends on formatRupiah utility)
+
       expect(screen.getByText(/Harga Emas Antam/i)).toBeInTheDocument();
     });
   });
@@ -266,7 +266,7 @@ describe('Dashboard Page', () => {
 
     await waitFor(() => {
       const cards = screen.getAllByRole('heading', { level: 3 });
-      // Should have current price, lowest, highest + other card headings
+
       expect(cards.length).toBeGreaterThan(0);
     });
   });
@@ -312,7 +312,7 @@ describe('Dashboard Page', () => {
       expect(screen.getByText(/Ringkasan Dashboard/i)).toBeInTheDocument();
     });
 
-    // Verify grid layouts exist (via classNames)
+
     const mainContainer = screen.getByText(/Ringkasan Dashboard/i).closest('div');
     expect(mainContainer).toBeInTheDocument();
   });

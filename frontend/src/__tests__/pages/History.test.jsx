@@ -278,7 +278,7 @@ describe('History Page', () => {
 
     render(<History />);
 
-    // Component will show loading spinner during fetch
+
     await waitFor(() => {
       expect(api.getHistoricalData).toHaveBeenCalled();
     });
@@ -338,7 +338,7 @@ describe('History Page', () => {
     render(<History />);
 
     await waitFor(() => {
-      // Verify stat cards are rendered - use more specific query
+
       const avgPriceCard = screen.getByText(/Harga Rata-rata/i);
       expect(avgPriceCard).toBeInTheDocument();
     });
